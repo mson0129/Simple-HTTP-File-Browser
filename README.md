@@ -1,48 +1,50 @@
 # Simple HTTP File Browser
 
-별도 패키지 설치 없이 Python 표준 라이브러리만으로 실행되는 단일 파일 웹 파일 브라우저입니다. Synology File Station과 비슷한 SPA 인터페이스에서 폴더를 탐색하고 파일을 관리할 수 있습니다.
+English | [한국어](README.ko.md) | [Español](README.es.md) | [日本語](README.ja.md)
 
-## 주요 기능
+A dependency-free, single-file web file browser built entirely with the Python standard library. It provides a responsive, Synology File Station-inspired SPA for browsing and managing files.
 
-- 폴더 탐색, 검색 및 이름·크기·수정일 정렬
-- 파일 다운로드
-- 다중 파일 선택 및 드래그 앤 드롭 업로드
-- 새 폴더 생성, 이름 변경 및 삭제
-- 기본 읽기 전용 모드
-- CLI 옵션과 JSON 설정 파일 지원
-- 접근 가능 루트 밖으로의 경로 이탈 및 심볼릭 링크 접근 차단
-- 모바일 화면을 지원하는 반응형 SPA
-- 브라우저 언어에 따른 UI 자동 선택
-  - 영어: `en-US` 및 `en-*`
-  - 스페인어: `es-ES` 및 `es-*`
-  - 일본어: `ja-JP` 및 `ja-*`
-  - 한국어: `ko-KR` 및 `ko-*`
-  - 지원하지 않는 언어는 영어로 표시
+## Features
 
-## 요구 사항
+- Browse folders and search or sort by name, size, and modification date
+- Download files
+- Upload multiple files using the file picker or drag and drop
+- Create folders, rename items, and recursively delete files and folders
+- Read-only mode by default
+- CLI options and JSON configuration
+- Protection against path traversal and symbolic-link escapes outside the configured root
+- Responsive interface for desktop and mobile browsers
+- Automatic UI language selection based on browser preferences:
+  - English: `en-US` and `en-*`
+  - Spanish: `es-ES` and `es-*`
+  - Japanese: `ja-JP` and `ja-*`
+  - Korean: `ko-KR` and `ko-*`
+  - Unsupported languages fall back to English
 
-- Python 3.9 이상
-- 외부 Python 패키지 불필요
+## Requirements
 
-## 빠른 시작
+- Python 3.9 or later
+- No third-party Python packages
 
-프로젝트 폴더에서 다음 명령을 실행합니다.
+## Quick start
+
+Run the following command from the project directory:
 
 ```bash
 python3 simple_http_file_browser.py --root /path/to/files
 ```
 
-브라우저에서 다음 주소를 엽니다.
+Open this address in your browser:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-기본 설정은 로컬 접속만 가능한 읽기 전용 모드입니다.
+The default configuration accepts local connections only and runs in read-only mode.
 
-### 쓰기 기능 활성화
+### Enable write operations
 
-업로드, 새 폴더 생성, 이름 변경 및 삭제를 허용하려면 `--upload`를 사용합니다.
+Use `--upload` to allow uploads, folder creation, renaming, and deletion:
 
 ```bash
 python3 simple_http_file_browser.py \
@@ -51,9 +53,9 @@ python3 simple_http_file_browser.py \
   --upload
 ```
 
-### 다른 기기에서 접속
+### Access from another device
 
-LAN의 다른 기기에서도 접속하게 하려면 모든 네트워크 인터페이스에 바인딩합니다.
+Bind to all network interfaces to allow connections from other devices on your LAN:
 
 ```bash
 python3 simple_http_file_browser.py \
@@ -62,46 +64,46 @@ python3 simple_http_file_browser.py \
   --root /path/to/files
 ```
 
-그런 다음 다른 기기에서 서버 컴퓨터의 IP 주소로 접속합니다.
+Then open the server computer's IP address from the other device:
 
 ```text
 http://SERVER_IP:8080
 ```
 
-## CLI 옵션
+## CLI options
 
 ```text
---config PATH  JSON 설정 파일 경로 (기본값: config.json)
---host HOST    바인드 주소 (기본값: 127.0.0.1)
---port PORT    실행 포트 (기본값: 8000)
---root PATH    브라우저에서 접근할 최상위 폴더 (기본값: 현재 폴더)
---upload       업로드와 파일 관리 기능 활성화
---read-only    쓰기 기능 비활성화
---version      버전 출력
+--config PATH  JSON configuration file (default: config.json)
+--host HOST    Bind address (default: 127.0.0.1)
+--port PORT    Server port (default: 8000)
+--root PATH    Top-level accessible folder (default: current directory)
+--upload       Enable uploads and file-management operations
+--read-only    Disable write operations
+--version      Print the version
 ```
 
-전체 도움말은 다음과 같이 확인할 수 있습니다.
+Display the complete help output with:
 
 ```bash
 python3 simple_http_file_browser.py --help
 ```
 
-설정 우선순위는 다음과 같습니다.
+Configuration precedence is:
 
-1. CLI 옵션
-2. JSON 설정 파일
-3. 프로그램 기본값
+1. CLI options
+2. JSON configuration file
+3. Program defaults
 
-## JSON 설정
+## JSON configuration
 
-제공된 예제 파일을 복사하여 사용할 수 있습니다.
+Copy the supplied example configuration:
 
 ```bash
 cp config.example.json config.json
 python3 simple_http_file_browser.py
 ```
 
-예제 설정:
+Example:
 
 ```json
 {
@@ -116,39 +118,40 @@ python3 simple_http_file_browser.py
 }
 ```
 
-| 항목 | 설명 |
+| Option | Description |
 |---|---|
-| `host` | 서버가 수신할 주소 |
-| `port` | 서버 포트 |
-| `root` | 접근 가능한 최상위 폴더 |
-| `upload` | 쓰기 기능 활성화 여부 |
-| `title` | 웹 화면 상단에 표시할 제목 |
-| `show_hidden` | 이름이 `.`으로 시작하는 항목 표시 여부 |
-| `max_upload_mb` | 한 HTTP 요청의 최대 업로드 크기(MB) |
-| `overwrite` | 같은 이름의 기존 파일 덮어쓰기 여부 |
+| `host` | Address on which the server listens |
+| `port` | Server port |
+| `root` | Top-level folder accessible through the browser |
+| `upload` | Whether write operations are enabled |
+| `title` | Title displayed in the web interface |
+| `show_hidden` | Whether names beginning with `.` are shown |
+| `max_upload_mb` | Maximum upload size per HTTP request, in MB |
+| `overwrite` | Whether uploads replace an existing file with the same name |
 
-다른 설정 파일을 사용하려면 경로를 지정합니다.
+Specify a different configuration file with:
 
 ```bash
 python3 simple_http_file_browser.py --config /path/to/my-config.json
 ```
 
-## 파일 삭제 동작
+## Deletion behavior
 
-- 파일은 즉시 삭제됩니다.
-- 폴더는 비어 있을 때만 삭제할 수 있습니다.
-- 휴지통이나 복구 기능은 제공하지 않습니다.
+- Files are deleted immediately.
+- Deleting a folder recursively deletes all files and subfolders inside it.
+- Symbolic links inside a deleted folder are removed without following their targets.
+- There is no trash or recovery feature.
 
-## 보안 주의사항
+## Security
 
-이 서버에는 사용자 인증과 HTTPS가 내장되어 있지 않습니다.
+This server does not include user authentication or HTTPS.
 
-- 기본값인 `127.0.0.1`과 읽기 전용 모드를 권장합니다.
-- `--host 0.0.0.0` 또는 `upload: true`는 신뢰할 수 있는 내부망에서만 사용하세요.
-- 인터넷에 공개해야 한다면 인증과 TLS가 구성된 리버스 프록시 뒤에서 실행하세요.
-- 접근할 필요가 없는 상위 폴더를 `root`로 지정하지 마세요.
+- Prefer the default `127.0.0.1` address and read-only mode.
+- Use `--host 0.0.0.0` or `upload: true` only on a trusted network.
+- If internet exposure is required, place the server behind a reverse proxy configured with authentication and TLS.
+- Do not select a broader `root` folder than necessary.
 
-## 종료
+## Stopping the server
 
-서버를 실행한 터미널에서 `Ctrl+C`를 누릅니다.
+Press `Ctrl+C` in the terminal running the server.
 

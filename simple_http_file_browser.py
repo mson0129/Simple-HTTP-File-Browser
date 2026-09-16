@@ -22,16 +22,16 @@ from pathlib import Path
 VERSION = "1.0.0"
 
 INDEX_HTML = r'''<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Simple File Browser</title><style>
 :root{--bg:#f3f6fa;--panel:#fff;--line:#dbe3ec;--text:#17212b;--muted:#687787;--blue:#1677ff;--blue2:#eaf3ff;--danger:#d9363e;--shadow:0 7px 28px #24405d18}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}button,input{font:inherit}.app{min-height:100vh}.top{height:58px;background:#172b4d;color:#fff;display:flex;align-items:center;padding:0 22px;gap:12px;box-shadow:0 2px 10px #0003}.logo{width:31px;height:31px;border-radius:8px;background:linear-gradient(145deg,#40a9ff,#096dd9);display:grid;place-items:center;font-size:18px}.top strong{font-size:16px}.top .status{margin-left:auto;color:#cbd7e7;font-size:12px}.layout{display:grid;grid-template-columns:210px minmax(0,1fr);min-height:calc(100vh - 58px)}aside{padding:24px 14px;background:#fff;border-right:1px solid var(--line)}.nav{padding:10px 12px;border-radius:8px;background:var(--blue2);color:var(--blue);font-weight:650}.info{margin-top:30px;padding:12px;color:var(--muted);font-size:12px}.main{padding:22px 26px;min-width:0}.crumbs{display:flex;align-items:center;gap:5px;min-height:33px;overflow:auto;white-space:nowrap}.crumbs button{border:0;background:none;color:var(--blue);cursor:pointer;padding:4px}.bar{display:flex;gap:8px;align-items:center;margin:12px 0}.btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:8px 12px;cursor:pointer;color:var(--text)}.btn:hover{border-color:#8abfff;color:var(--blue)}.primary{background:var(--blue);border-color:var(--blue);color:white}.primary:hover{color:white;background:#096dd9}.search{margin-left:auto;min-width:220px;border:1px solid var(--line);border-radius:7px;padding:8px 11px;outline:none}.search:focus{border-color:var(--blue)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}.head,.row{display:grid;grid-template-columns:minmax(260px,1fr) 110px 170px 82px;align-items:center}.head{background:#f7f9fc;color:var(--muted);font-size:12px;border-bottom:1px solid var(--line);padding:9px 14px}.head span{cursor:pointer}.row{padding:8px 14px;min-height:49px;border-bottom:1px solid #edf1f5}.row:last-child{border-bottom:0}.row:hover{background:#f5f9ff}.name{display:flex;align-items:center;min-width:0;gap:11px}.name button{border:0;background:none;padding:0;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;color:var(--text)}.name button:hover{color:var(--blue)}.icon{font-size:23px;width:26px;text-align:center}.meta{color:var(--muted);font-size:12px}.actions{display:flex;gap:4px;justify-content:flex-end}.iconbtn{border:0;background:none;color:#718096;cursor:pointer;padding:5px}.iconbtn:hover{color:var(--blue)}.empty{padding:70px 20px;text-align:center;color:var(--muted)}.drop{position:fixed;inset:0;background:#1677ff24;z-index:9;display:none;place-items:center;border:4px dashed var(--blue);font-size:24px;color:var(--blue);font-weight:700}.drop.on{display:grid}.toast{position:fixed;right:24px;bottom:24px;max-width:380px;padding:11px 16px;background:#17212beF;color:#fff;border-radius:8px;box-shadow:var(--shadow);opacity:0;transform:translateY(12px);pointer-events:none;transition:.2s}.toast.on{opacity:1;transform:none}.danger{color:var(--danger)}dialog{border:0;border-radius:11px;box-shadow:0 18px 70px #0005;padding:0;min-width:340px}dialog::backdrop{background:#14203377}.modal{padding:20px}.modal h3{margin:0 0 15px}.modal input{width:100%;padding:9px;border:1px solid var(--line);border-radius:7px}.modal .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}@media(max-width:760px){.layout{grid-template-columns:1fr}aside{display:none}.main{padding:14px}.head,.row{grid-template-columns:minmax(130px,1fr) 80px 72px}.date{display:none}.search{min-width:0;width:130px}.bar{flex-wrap:wrap}}
-</style></head><body><div class="app"><header class="top"><div class="logo">📁</div><strong id="title">Simple File Browser</strong><span class="status" id="status"></span></header><div class="layout"><aside><div class="nav" data-i18n="allFiles">▣ 모든 파일</div></aside><main class="main"><div class="crumbs" id="crumbs"></div><div class="bar"><button class="btn primary write" onclick="pickFiles()" data-i18n="upload">↑ 업로드</button><button class="btn write" onclick="newFolder()" data-i18n="newFolder">＋ 새 폴더</button><button class="btn" onclick="load()" data-i18n="refresh">↻ 새로고침</button><input class="search" id="search" data-i18n-placeholder="search" placeholder="현재 폴더 검색" oninput="render()"></div><section class="panel"><div class="head"><span onclick="sortBy('name')" data-i18n="name">이름</span><span onclick="sortBy('size')" data-i18n="size">크기</span><span class="date" onclick="sortBy('mtime')" data-i18n="modified">수정한 날짜</span><span></span></div><div id="files"></div></section></main></div></div><input id="picker" type="file" multiple hidden><div class="drop" id="drop" data-i18n="drop">여기에 놓아 업로드</div><div class="toast" id="toast"></div><dialog id="dialog"><div class="modal"><h3 id="dlgTitle"></h3><input id="dlgInput"><div class="foot"><button class="btn" onclick="dialog.close()" data-i18n="cancel">취소</button><button class="btn primary" id="dlgOk" data-i18n="confirm">확인</button></div></div></dialog>
+</style></head><body><div class="app"><header class="top"><div class="logo">📁</div><strong id="title">Simple File Browser</strong><span class="status" id="status"></span></header><div class="layout"><aside><div class="nav" data-i18n="allFiles">▣ All files</div></aside><main class="main"><div class="crumbs" id="crumbs"></div><div class="bar"><button class="btn primary write" onclick="pickFiles()" data-i18n="upload">↑ Upload</button><button class="btn write" onclick="newFolder()" data-i18n="newFolder">＋ New folder</button><button class="btn" onclick="load()" data-i18n="refresh">↻ Refresh</button><input class="search" id="search" data-i18n-placeholder="search" placeholder="Search this folder" oninput="render()"></div><section class="panel"><div class="head"><span onclick="sortBy('name')" data-i18n="name">Name</span><span onclick="sortBy('size')" data-i18n="size">Size</span><span class="date" onclick="sortBy('mtime')" data-i18n="modified">Date modified</span><span></span></div><div id="files"></div></section></main></div></div><input id="picker" type="file" multiple hidden><div class="drop" id="drop" data-i18n="drop">Drop files here to upload</div><div class="toast" id="toast"></div><dialog id="dialog"><div class="modal"><h3 id="dlgTitle"></h3><input id="dlgInput"><div class="foot"><button class="btn" onclick="dialog.close()" data-i18n="cancel">Cancel</button><button class="btn primary" id="dlgOk" data-i18n="confirm">Confirm</button></div></div></dialog>
 <script>
 const M={
- 'en-US':{allFiles:'▣ All files',upload:'↑ Upload',newFolder:'＋ New folder',refresh:'↻ Refresh',search:'Search this folder',name:'Name',size:'Size',modified:'Date modified',drop:'Drop files here to upload',cancel:'Cancel',confirm:'Confirm',readWrite:'Read / write',readOnly:'Read only',home:'🏠 Home',noResults:'No matching files.',empty:'This folder is empty.',download:'Download',rename:'Rename',delete:'Delete',newFolderName:'New folder name',folderCreated:'Folder created.',renamed:'Name changed.',deleteAsk:n=>`Delete “${n}”? The folder must be empty.`,deleted:'Deleted.',uploading:'Uploading…',uploaded:n=>`${n} file(s) uploaded.`,requestFailed:'The request could not be completed.'},
- 'es-ES':{allFiles:'▣ Todos los archivos',upload:'↑ Subir',newFolder:'＋ Nueva carpeta',refresh:'↻ Actualizar',search:'Buscar en esta carpeta',name:'Nombre',size:'Tamaño',modified:'Fecha de modificación',drop:'Suelta aquí los archivos para subirlos',cancel:'Cancelar',confirm:'Confirmar',readWrite:'Lectura / escritura',readOnly:'Solo lectura',home:'🏠 Inicio',noResults:'No hay archivos que coincidan.',empty:'Esta carpeta está vacía.',download:'Descargar',rename:'Cambiar nombre',delete:'Eliminar',newFolderName:'Nombre de la nueva carpeta',folderCreated:'Carpeta creada.',renamed:'Nombre cambiado.',deleteAsk:n=>`¿Eliminar “${n}”? La carpeta debe estar vacía.`,deleted:'Eliminado.',uploading:'Subiendo…',uploaded:n=>`${n} archivo(s) subido(s).`,requestFailed:'No se pudo completar la solicitud.'},
- 'ja-JP':{allFiles:'▣ すべてのファイル',upload:'↑ アップロード',newFolder:'＋ 新しいフォルダー',refresh:'↻ 更新',search:'このフォルダーを検索',name:'名前',size:'サイズ',modified:'更新日時',drop:'ここにドロップしてアップロード',cancel:'キャンセル',confirm:'確認',readWrite:'読み取り / 書き込み',readOnly:'読み取り専用',home:'🏠 ホーム',noResults:'一致するファイルがありません。',empty:'このフォルダーは空です。',download:'ダウンロード',rename:'名前を変更',delete:'削除',newFolderName:'新しいフォルダー名',folderCreated:'フォルダーを作成しました。',renamed:'名前を変更しました。',deleteAsk:n=>`「${n}」を削除しますか？フォルダーは空である必要があります。`,deleted:'削除しました。',uploading:'アップロード中…',uploaded:n=>`${n}個のファイルをアップロードしました。`,requestFailed:'リクエストを完了できませんでした。'},
- 'ko-KR':{allFiles:'▣ 모든 파일',upload:'↑ 업로드',newFolder:'＋ 새 폴더',refresh:'↻ 새로고침',search:'현재 폴더 검색',name:'이름',size:'크기',modified:'수정한 날짜',drop:'여기에 놓아 업로드',cancel:'취소',confirm:'확인',readWrite:'읽기 / 쓰기',readOnly:'읽기 전용',home:'🏠 홈',noResults:'검색 결과가 없습니다.',empty:'이 폴더는 비어 있습니다.',download:'다운로드',rename:'이름 변경',delete:'삭제',newFolderName:'새 폴더 이름',folderCreated:'폴더를 만들었습니다.',renamed:'이름을 변경했습니다.',deleteAsk:n=>`“${n}”을(를) 삭제할까요? 폴더는 비어 있어야 합니다.`,deleted:'삭제했습니다.',uploading:'업로드 중…',uploaded:n=>`${n}개 파일을 업로드했습니다.`,requestFailed:'요청을 완료할 수 없습니다.'}
+ 'en-US':{allFiles:'▣ All files',upload:'↑ Upload',newFolder:'＋ New folder',refresh:'↻ Refresh',search:'Search this folder',name:'Name',size:'Size',modified:'Date modified',drop:'Drop files here to upload',cancel:'Cancel',confirm:'Confirm',readWrite:'Read / write',readOnly:'Read only',home:'🏠 Home',noResults:'No matching files.',empty:'This folder is empty.',download:'Download',rename:'Rename',delete:'Delete',newFolderName:'New folder name',folderCreated:'Folder created.',renamed:'Name changed.',deleteAsk:n=>`Permanently delete “${n}”? If it is a folder, all files and subfolders inside it will also be deleted.`,deleted:'Deleted.',uploading:'Uploading…',uploaded:n=>`${n} file(s) uploaded.`,requestFailed:'The request could not be completed.'},
+ 'es-ES':{allFiles:'▣ Todos los archivos',upload:'↑ Subir',newFolder:'＋ Nueva carpeta',refresh:'↻ Actualizar',search:'Buscar en esta carpeta',name:'Nombre',size:'Tamaño',modified:'Fecha de modificación',drop:'Suelta aquí los archivos para subirlos',cancel:'Cancelar',confirm:'Confirmar',readWrite:'Lectura / escritura',readOnly:'Solo lectura',home:'🏠 Inicio',noResults:'No hay archivos que coincidan.',empty:'Esta carpeta está vacía.',download:'Descargar',rename:'Cambiar nombre',delete:'Eliminar',newFolderName:'Nombre de la nueva carpeta',folderCreated:'Carpeta creada.',renamed:'Nombre cambiado.',deleteAsk:n=>`¿Eliminar “${n}” permanentemente? Si es una carpeta, también se eliminarán todos sus archivos y subcarpetas.`,deleted:'Eliminado.',uploading:'Subiendo…',uploaded:n=>`${n} archivo(s) subido(s).`,requestFailed:'No se pudo completar la solicitud.'},
+ 'ja-JP':{allFiles:'▣ すべてのファイル',upload:'↑ アップロード',newFolder:'＋ 新しいフォルダー',refresh:'↻ 更新',search:'このフォルダーを検索',name:'名前',size:'サイズ',modified:'更新日時',drop:'ここにドロップしてアップロード',cancel:'キャンセル',confirm:'確認',readWrite:'読み取り / 書き込み',readOnly:'読み取り専用',home:'🏠 ホーム',noResults:'一致するファイルがありません。',empty:'このフォルダーは空です。',download:'ダウンロード',rename:'名前を変更',delete:'削除',newFolderName:'新しいフォルダー名',folderCreated:'フォルダーを作成しました。',renamed:'名前を変更しました。',deleteAsk:n=>`「${n}」を完全に削除しますか？フォルダーの場合、中のファイルとサブフォルダーもすべて削除されます。`,deleted:'削除しました。',uploading:'アップロード中…',uploaded:n=>`${n}個のファイルをアップロードしました。`,requestFailed:'リクエストを完了できませんでした。'},
+ 'ko-KR':{allFiles:'▣ 모든 파일',upload:'↑ 업로드',newFolder:'＋ 새 폴더',refresh:'↻ 새로고침',search:'현재 폴더 검색',name:'이름',size:'크기',modified:'수정한 날짜',drop:'여기에 놓아 업로드',cancel:'취소',confirm:'확인',readWrite:'읽기 / 쓰기',readOnly:'읽기 전용',home:'🏠 홈',noResults:'검색 결과가 없습니다.',empty:'이 폴더는 비어 있습니다.',download:'다운로드',rename:'이름 변경',delete:'삭제',newFolderName:'새 폴더 이름',folderCreated:'폴더를 만들었습니다.',renamed:'이름을 변경했습니다.',deleteAsk:n=>`“${n}”을(를) 영구 삭제할까요? 폴더인 경우 내부의 파일과 하위 폴더도 모두 삭제됩니다.`,deleted:'삭제했습니다.',uploading:'업로드 중…',uploaded:n=>`${n}개 파일을 업로드했습니다.`,requestFailed:'요청을 완료할 수 없습니다.'}
 };
 const LANG_MAP={en:'en-US',es:'es-ES',ja:'ja-JP',ko:'ko-KR'};
 const LOCALE=(navigator.languages||[navigator.language||'en']).map(x=>LANG_MAP[x.toLowerCase().split('-')[0]]).find(Boolean)||'en-US';
@@ -60,7 +60,7 @@ let drag=0;addEventListener('dragenter',e=>{e.preventDefault();if(writable){drag
 
 def safe_name(name: str) -> str:
     if not name or name in {".", ".."} or "/" in name or "\\" in name or "\0" in name:
-        raise ValueError("올바르지 않은 파일 이름입니다.")
+        raise ValueError("Invalid file name.")
     return name
 
 
@@ -94,9 +94,9 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
         try:
             target.relative_to(root)
         except ValueError:
-            raise PermissionError("허용된 폴더 밖에는 접근할 수 없습니다.")
+            raise PermissionError("Access outside the configured root folder is not allowed.")
         if must_exist and not target.exists():
-            raise FileNotFoundError("파일 또는 폴더가 없습니다.")
+            raise FileNotFoundError("The file or folder does not exist.")
         return target
 
     def do_GET(self):
@@ -113,7 +113,7 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
                 self.end_headers(); self.wfile.write(raw)
             elif parsed.path == "/api/list":
                 target = self.resolve(query.get("path", [""])[0])
-                if not target.is_dir(): raise ValueError("폴더가 아닙니다.")
+                if not target.is_dir(): raise ValueError("The requested path is not a folder.")
                 items = []
                 for p in target.iterdir():
                     if not self.config["show_hidden"] and p.name.startswith("."): continue
@@ -125,24 +125,24 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
                 self.send_json({"path": "" if rel == "." else rel, "items": items, "writable": self.config["upload"], "title": self.config["title"]})
             elif parsed.path == "/api/download":
                 target = self.resolve(query.get("path", [""])[0])
-                if not target.is_file(): raise ValueError("파일이 아닙니다.")
+                if not target.is_file(): raise ValueError("The requested path is not a file.")
                 self.send_response(200)
                 self.send_header("Content-Type", mimetypes.guess_type(target.name)[0] or "application/octet-stream")
                 self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + urllib.parse.quote(target.name))
                 self.send_header("Content-Length", str(target.stat().st_size)); self.end_headers()
                 with target.open("rb") as f: shutil.copyfileobj(f, self.wfile)
-            else: self.fail(404, "찾을 수 없습니다.")
+            else: self.fail(404, "Not found.")
         except PermissionError as e: self.fail(403, str(e))
         except FileNotFoundError as e: self.fail(404, str(e))
         except (ValueError, OSError) as e: self.fail(400, str(e))
 
     def read_json(self):
         length = int(self.headers.get("Content-Length", "0"))
-        if length > 1024 * 1024: raise ValueError("요청이 너무 큽니다.")
+        if length > 1024 * 1024: raise ValueError("The request is too large.")
         return json.loads(self.rfile.read(length) or b"{}")
 
     def require_write(self):
-        if not self.config["upload"]: raise PermissionError("쓰기 기능이 비활성화되어 있습니다.")
+        if not self.config["upload"]: raise PermissionError("Write operations are disabled.")
 
     def do_POST(self):
         parsed = urllib.parse.urlsplit(self.path)
@@ -150,19 +150,25 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
             self.require_write()
             if parsed.path == "/api/upload": self.handle_upload(); return
             data = self.read_json(); parent = self.resolve(data.get("path", ""))
-            if not parent.is_dir(): raise ValueError("대상 폴더가 올바르지 않습니다.")
+            if not parent.is_dir(): raise ValueError("The destination folder is invalid.")
             if parsed.path == "/api/mkdir":
                 (parent / safe_name(data.get("name", ""))).mkdir()
             elif parsed.path == "/api/rename":
                 old = self.resolve((parent.relative_to(self.config["root"]) / safe_name(data.get("name", ""))).as_posix())
                 new = parent / safe_name(data.get("new_name", ""))
-                if new.exists(): raise FileExistsError("같은 이름이 이미 있습니다.")
+                if new.exists(): raise FileExistsError("An item with the same name already exists.")
                 old.rename(new)
             elif parsed.path == "/api/delete":
-                target = self.resolve((parent.relative_to(self.config["root"]) / safe_name(data.get("name", ""))).as_posix())
-                if target == self.config["root"]: raise PermissionError("루트 폴더는 삭제할 수 없습니다.")
-                target.rmdir() if target.is_dir() else target.unlink()
-            else: self.fail(404, "찾을 수 없습니다."); return
+                target = parent / safe_name(data.get("name", ""))
+                if target.is_symlink():
+                    target.unlink()
+                elif target.is_dir():
+                    shutil.rmtree(target)
+                elif target.exists():
+                    target.unlink()
+                else:
+                    raise FileNotFoundError("The file or folder does not exist.")
+            else: self.fail(404, "Not found."); return
             self.send_json({"ok": True})
         except PermissionError as e: self.fail(403, str(e))
         except FileNotFoundError as e: self.fail(404, str(e))
@@ -172,14 +178,14 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
     def handle_upload(self):
         length = int(self.headers.get("Content-Length", "0"))
         max_bytes = self.config["max_upload_mb"] * 1024 * 1024
-        if length <= 0 or length > max_bytes: raise ValueError(f"업로드는 요청당 {self.config['max_upload_mb']}MB까지 가능합니다.")
+        if length <= 0 or length > max_bytes: raise ValueError(f"Uploads are limited to {self.config['max_upload_mb']} MB per request.")
         ctype = self.headers.get("Content-Type", "")
-        if not ctype.startswith("multipart/form-data") or "boundary=" not in ctype: raise ValueError("multipart/form-data 요청이 필요합니다.")
+        if not ctype.startswith("multipart/form-data") or "boundary=" not in ctype: raise ValueError("A multipart/form-data request is required.")
         with tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024) as body:
             remaining = length
             while remaining:
                 chunk = self.rfile.read(min(1024 * 1024, remaining))
-                if not chunk: raise ValueError("업로드가 중단되었습니다.")
+                if not chunk: raise ValueError("The upload was interrupted.")
                 body.write(chunk); remaining -= len(chunk)
             body.seek(0)
             msg = BytesParser(policy=email_policy).parsebytes(("Content-Type: " + ctype + "\r\nMIME-Version: 1.0\r\n\r\n").encode() + body.read())
@@ -190,14 +196,14 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
             if filename is not None: files.append((safe_name(Path(filename).name), part.get_payload(decode=True) or b""))
             elif name: fields[name] = (part.get_payload(decode=True) or b"").decode("utf-8")
         parent = self.resolve(fields.get("path", ""))
-        if not parent.is_dir(): raise ValueError("대상 폴더가 올바르지 않습니다.")
+        if not parent.is_dir(): raise ValueError("The destination folder is invalid.")
         overwrite = self.config["overwrite"]
         targets = []
         for name, _ in files:
             relative = (parent.relative_to(self.config["root"]) / name).as_posix()
             target = self.resolve(relative, must_exist=False)
             if target.exists() and (target.is_dir() or not overwrite):
-                raise FileExistsError(f"{name}: 같은 이름이 이미 있습니다.")
+                raise FileExistsError(f"{name}: an item with the same name already exists.")
             targets.append(target)
         for (name, payload), target in zip(files, targets):
             with target.open("wb") as out: out.write(payload)
@@ -207,31 +213,31 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
 def load_config(path: Path):
     if not path.exists(): return {}
     with path.open(encoding="utf-8") as f: data = json.load(f)
-    if not isinstance(data, dict): raise ValueError("설정 파일의 최상위 값은 객체여야 합니다.")
+    if not isinstance(data, dict): raise ValueError("The top-level value in the configuration file must be an object.")
     return data
 
 
 def main():
-    parser = argparse.ArgumentParser(description="외부 패키지가 필요 없는 단일 파일 HTTP 파일 브라우저")
-    parser.add_argument("--config", default="config.json", help="JSON 설정 파일 (기본: config.json)")
-    parser.add_argument("--port", type=int, help="실행 포트")
-    parser.add_argument("--host", help="바인드 주소 (외부 접속: 0.0.0.0)")
-    parser.add_argument("--root", help="공개할 루트 폴더")
+    parser = argparse.ArgumentParser(description="A dependency-free, single-file HTTP file browser")
+    parser.add_argument("--config", default="config.json", help="JSON configuration file (default: config.json)")
+    parser.add_argument("--port", type=int, help="server port")
+    parser.add_argument("--host", help="bind address (use 0.0.0.0 for remote access)")
+    parser.add_argument("--root", help="root folder to expose")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--upload", action="store_true", default=None, help="업로드/이름 변경/삭제 허용")
-    group.add_argument("--read-only", action="store_false", dest="upload", help="쓰기 기능 비활성화")
+    group.add_argument("--upload", action="store_true", default=None, help="allow uploads, renaming, and deletion")
+    group.add_argument("--read-only", action="store_false", dest="upload", help="disable write operations")
     parser.add_argument("--version", action="version", version=VERSION)
     args = parser.parse_args()
     try: file_cfg = load_config(Path(args.config))
-    except (OSError, ValueError, json.JSONDecodeError) as e: parser.error(f"설정 파일 오류: {e}")
+    except (OSError, ValueError, json.JSONDecodeError) as e: parser.error(f"configuration error: {e}")
     defaults = {"host": "127.0.0.1", "port": 8000, "root": ".", "upload": False, "title": "Simple File Browser", "show_hidden": False, "max_upload_mb": 512, "overwrite": False}
     cfg = defaults | file_cfg
     for key in ("host", "port", "root", "upload"):
         value = getattr(args, key)
         if value is not None: cfg[key] = value
     cfg["root"] = Path(cfg["root"]).expanduser().resolve()
-    if not cfg["root"].is_dir(): parser.error(f"대상 폴더가 없습니다: {cfg['root']}")
-    if not 1 <= int(cfg["port"]) <= 65535: parser.error("포트는 1~65535 범위여야 합니다.")
+    if not cfg["root"].is_dir(): parser.error(f"root folder does not exist: {cfg['root']}")
+    if not 1 <= int(cfg["port"]) <= 65535: parser.error("port must be between 1 and 65535")
     server = ThreadingHTTPServer((str(cfg["host"]), int(cfg["port"])), FileBrowserHandler)
     server.config = cfg
     print(f"Simple File Browser {VERSION}")
