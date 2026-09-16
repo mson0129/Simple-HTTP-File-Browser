@@ -1,0 +1,10 @@
+{
+  "host": "127.0.0.1",
+  "port": 8000,
+  "root": ".",
+  "upload": false,
+  "title": "My File Station",
+  "show_hidden": false,
+  "max_upload_mb": 512,
+  "overwrite": false
+}
