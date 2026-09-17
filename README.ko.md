@@ -37,10 +37,10 @@ python3 simple_http_file_browser.py --root /path/to/files
 브라우저에서 다음 주소를 엽니다.
 
 ```text
-http://127.0.0.1:8000
+http://localhost:8000
 ```
 
-기본 설정은 로컬 접속만 가능한 읽기 전용 모드입니다.
+기본 설정은 모든 네트워크 인터페이스(`0.0.0.0`)에서 수신하며 읽기 전용 모드로 실행됩니다.
 
 ### 쓰기 기능 활성화
 
@@ -55,11 +55,10 @@ python3 simple_http_file_browser.py \
 
 ### 다른 기기에서 접속
 
-LAN의 다른 기기에서도 접속하게 하려면 모든 네트워크 인터페이스에 바인딩합니다.
+기본 바인드 주소는 이미 LAN의 다른 기기에서도 접속할 수 있도록 설정되어 있습니다.
 
 ```bash
 python3 simple_http_file_browser.py \
-  --host 0.0.0.0 \
   --port 8080 \
   --root /path/to/files
 ```
@@ -74,7 +73,7 @@ http://SERVER_IP:8080
 
 ```text
 --config PATH  JSON 설정 파일 경로 (기본값: config.json)
---host HOST    바인드 주소 (기본값: 127.0.0.1)
+--host HOST    바인드 주소 (기본값: 0.0.0.0)
 --port PORT    실행 포트 (기본값: 8000)
 --root PATH    브라우저에서 접근할 최상위 폴더 (기본값: 현재 폴더)
 --upload       업로드와 파일 관리 기능 활성화
@@ -107,7 +106,7 @@ python3 simple_http_file_browser.py
 
 ```json
 {
-  "host": "127.0.0.1",
+  "host": "0.0.0.0",
   "port": 8000,
   "root": ".",
   "upload": false,
@@ -146,8 +145,9 @@ python3 simple_http_file_browser.py --config /path/to/my-config.json
 
 이 서버에는 사용자 인증과 HTTPS가 내장되어 있지 않습니다.
 
-- 기본값인 `127.0.0.1`과 읽기 전용 모드를 권장합니다.
-- `--host 0.0.0.0` 또는 `upload: true`는 신뢰할 수 있는 내부망에서만 사용하세요.
+- 기본값인 `0.0.0.0`은 사용 가능한 모든 네트워크 인터페이스에 서버를 공개하므로 신뢰할 수 있는 네트워크에서만 사용하세요.
+- 같은 컴퓨터에서만 접속하도록 제한하려면 `--host 127.0.0.1`로 실행하세요.
+- 쓰기 권한이 필요할 때만 `upload: true` 또는 `--upload`를 사용하세요.
 - 인터넷에 공개해야 한다면 인증과 TLS가 구성된 리버스 프록시 뒤에서 실행하세요.
 - 접근할 필요가 없는 상위 폴더를 `root`로 지정하지 마세요.
 

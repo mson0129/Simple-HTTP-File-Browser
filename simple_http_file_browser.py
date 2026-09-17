@@ -19,7 +19,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.1"
 
 INDEX_HTML = r'''<!doctype html>
 <html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -221,7 +221,7 @@ def main():
     parser = argparse.ArgumentParser(description="A dependency-free, single-file HTTP file browser")
     parser.add_argument("--config", default="config.json", help="JSON configuration file (default: config.json)")
     parser.add_argument("--port", type=int, help="server port")
-    parser.add_argument("--host", help="bind address (use 0.0.0.0 for remote access)")
+    parser.add_argument("--host", help="bind address (default: 0.0.0.0)")
     parser.add_argument("--root", help="root folder to expose")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--upload", action="store_true", default=None, help="allow uploads, renaming, and deletion")
@@ -230,7 +230,7 @@ def main():
     args = parser.parse_args()
     try: file_cfg = load_config(Path(args.config))
     except (OSError, ValueError, json.JSONDecodeError) as e: parser.error(f"configuration error: {e}")
-    defaults = {"host": "127.0.0.1", "port": 8000, "root": ".", "upload": False, "title": "Simple File Browser", "show_hidden": False, "max_upload_mb": 512, "overwrite": False}
+    defaults = {"host": "0.0.0.0", "port": 8000, "root": ".", "upload": False, "title": "Simple File Browser", "show_hidden": False, "max_upload_mb": 512, "overwrite": False}
     cfg = defaults | file_cfg
     for key in ("host", "port", "root", "upload"):
         value = getattr(args, key)

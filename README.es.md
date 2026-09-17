@@ -32,10 +32,10 @@ python3 simple_http_file_browser.py --root /ruta/a/archivos
 Abre esta dirección en el navegador:
 
 ```text
-http://127.0.0.1:8000
+http://localhost:8000
 ```
 
-La configuración predeterminada solo acepta conexiones locales y funciona en modo de solo lectura.
+De forma predeterminada, el servidor escucha en todas las interfaces de red (`0.0.0.0`) y funciona en modo de solo lectura.
 
 ### Activar operaciones de escritura
 
@@ -52,7 +52,6 @@ python3 simple_http_file_browser.py \
 
 ```bash
 python3 simple_http_file_browser.py \
-  --host 0.0.0.0 \
   --port 8080 \
   --root /ruta/a/archivos
 ```
@@ -63,7 +62,7 @@ Después, abre `http://IP_DEL_SERVIDOR:8080` desde el otro dispositivo.
 
 ```text
 --config PATH  Archivo de configuración JSON (predeterminado: config.json)
---host HOST    Dirección de escucha (predeterminada: 127.0.0.1)
+--host HOST    Dirección de escucha (predeterminada: 0.0.0.0)
 --port PORT    Puerto del servidor (predeterminado: 8000)
 --root PATH    Carpeta superior accesible (predeterminada: carpeta actual)
 --upload       Activar cargas y administración de archivos
@@ -82,7 +81,7 @@ python3 simple_http_file_browser.py
 
 ```json
 {
-  "host": "127.0.0.1",
+  "host": "0.0.0.0",
   "port": 8000,
   "root": ".",
   "upload": false,
@@ -115,7 +114,7 @@ Para usar otro archivo: `python3 simple_http_file_browser.py --config /ruta/a/co
 
 ## Seguridad
 
-El servidor no incluye autenticación de usuarios ni HTTPS. Usa `0.0.0.0` y las operaciones de escritura solo en redes de confianza. Para publicarlo en internet, colócalo detrás de un proxy inverso con autenticación y TLS. Limita `root` a la carpeta estrictamente necesaria.
+El servidor no incluye autenticación de usuarios ni HTTPS. La dirección predeterminada `0.0.0.0` publica el servidor en todas las interfaces de red disponibles, por lo que debe utilizarse solo en redes de confianza. Para limitar el acceso al mismo equipo, usa `--host 127.0.0.1`. Activa las operaciones de escritura solo cuando sean necesarias. Para publicarlo en internet, colócalo detrás de un proxy inverso con autenticación y TLS. Limita `root` a la carpeta estrictamente necesaria.
 
 ## Detener el servidor
 

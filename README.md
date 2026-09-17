@@ -37,10 +37,10 @@ python3 simple_http_file_browser.py --root /path/to/files
 Open this address in your browser:
 
 ```text
-http://127.0.0.1:8000
+http://localhost:8000
 ```
 
-The default configuration accepts local connections only and runs in read-only mode.
+By default, the server listens on all network interfaces (`0.0.0.0`) and runs in read-only mode.
 
 ### Enable write operations
 
@@ -55,11 +55,10 @@ python3 simple_http_file_browser.py \
 
 ### Access from another device
 
-Bind to all network interfaces to allow connections from other devices on your LAN:
+The default bind address already allows connections from other devices on your LAN:
 
 ```bash
 python3 simple_http_file_browser.py \
-  --host 0.0.0.0 \
   --port 8080 \
   --root /path/to/files
 ```
@@ -74,7 +73,7 @@ http://SERVER_IP:8080
 
 ```text
 --config PATH  JSON configuration file (default: config.json)
---host HOST    Bind address (default: 127.0.0.1)
+--host HOST    Bind address (default: 0.0.0.0)
 --port PORT    Server port (default: 8000)
 --root PATH    Top-level accessible folder (default: current directory)
 --upload       Enable uploads and file-management operations
@@ -107,7 +106,7 @@ Example:
 
 ```json
 {
-  "host": "127.0.0.1",
+  "host": "0.0.0.0",
   "port": 8000,
   "root": ".",
   "upload": false,
@@ -146,8 +145,9 @@ python3 simple_http_file_browser.py --config /path/to/my-config.json
 
 This server does not include user authentication or HTTPS.
 
-- Prefer the default `127.0.0.1` address and read-only mode.
-- Use `--host 0.0.0.0` or `upload: true` only on a trusted network.
+- The default `0.0.0.0` address exposes the server on every available network interface. Use it only on a trusted network.
+- To restrict access to the same computer, start the server with `--host 127.0.0.1`.
+- Enable `upload: true` or `--upload` only when write access is required.
 - If internet exposure is required, place the server behind a reverse proxy configured with authentication and TLS.
 - Do not select a broader `root` folder than necessary.
 
