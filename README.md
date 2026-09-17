@@ -7,6 +7,7 @@ A dependency-free, single-file web file browser built entirely with the Python s
 ## Features
 
 - Browse folders and search or sort by name, size, and modification date
+- Expand, collapse, and navigate folders using the sidebar tree
 - Download files
 - Upload multiple files using the file picker or drag and drop
 - Create folders, rename items, and recursively delete files and folders

@@ -7,6 +7,7 @@ Un explorador de archivos web en un único archivo, sin dependencias externas y 
 ## Funciones
 
 - Exploración de carpetas, búsqueda y ordenación por nombre, tamaño o fecha de modificación
+- Expandir, contraer y navegar por las carpetas mediante el árbol de la barra lateral
 - Descarga de archivos
 - Carga múltiple mediante selector de archivos o arrastrar y soltar
 - Creación de carpetas, cambio de nombre y eliminación recursiva
