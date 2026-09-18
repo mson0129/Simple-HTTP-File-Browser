@@ -1,6 +1,6 @@
 # Simple HTTP File Browser
 
-[English](README.md) | [한국어](README.ko.md) | Español | [日本語](README.ja.md)
+[English](../../README.md) | [한국어](README.ko.md) | Español | [日本語](README.ja.md)
 
 Un explorador de archivos web en un único archivo, sin dependencias externas y creado completamente con la biblioteca estándar de Python. Ofrece una SPA adaptable inspirada en Synology File Station para explorar y administrar archivos.
 
@@ -10,6 +10,7 @@ Un explorador de archivos web en un único archivo, sin dependencias externas y 
 - Expandir, contraer y navegar por las carpetas mediante el árbol de la barra lateral
 - Descarga de archivos
 - Carga múltiple mediante selector de archivos o arrastrar y soltar
+- Progreso individual por archivo con tamaño transferido y estado de finalización
 - Creación de carpetas, cambio de nombre y eliminación recursiva
 - Modo de solo lectura de forma predeterminada
 - Opciones de línea de comandos y configuración JSON

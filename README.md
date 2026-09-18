@@ -1,6 +1,6 @@
 # Simple HTTP File Browser
 
-English | [한국어](README.ko.md) | [Español](README.es.md) | [日本語](README.ja.md)
+English | [한국어](docs/readme/README.ko.md) | [Español](docs/readme/README.es.md) | [日本語](docs/readme/README.ja.md)
 
 A dependency-free, single-file web file browser built entirely with the Python standard library. It provides a responsive, Synology File Station-inspired SPA for browsing and managing files.
 
@@ -10,6 +10,7 @@ A dependency-free, single-file web file browser built entirely with the Python s
 - Expand, collapse, and navigate folders using the sidebar tree
 - Download files
 - Upload multiple files using the file picker or drag and drop
+- Track each file with its own progress bar, transferred size, and completion status
 - Create folders, rename items, and recursively delete files and folders
 - Read-only mode by default
 - CLI options and JSON configuration

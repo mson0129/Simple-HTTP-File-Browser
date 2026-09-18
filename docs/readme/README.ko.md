@@ -1,6 +1,6 @@
 # Simple HTTP File Browser
 
-[English](README.md) | 한국어 | [Español](README.es.md) | [日本語](README.ja.md)
+[English](../../README.md) | 한국어 | [Español](README.es.md) | [日本語](README.ja.md)
 
 별도 패키지 설치 없이 Python 표준 라이브러리만으로 실행되는 단일 파일 웹 파일 브라우저입니다. Synology File Station과 비슷한 SPA 인터페이스에서 폴더를 탐색하고 파일을 관리할 수 있습니다.
 
@@ -10,6 +10,7 @@
 - 사이드바의 폴더 트리에서 폴더 펼치기, 접기 및 이동
 - 파일 다운로드
 - 다중 파일 선택 및 드래그 앤 드롭 업로드
+- 파일별 진행 바, 전송 용량 및 완료 상태를 표시하는 업로드 패널
 - 새 폴더 생성, 이름 변경 및 삭제
 - 기본 읽기 전용 모드
 - CLI 옵션과 JSON 설정 파일 지원
