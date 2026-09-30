@@ -8,7 +8,8 @@ Un explorador de archivos web en un único archivo, sin dependencias externas y 
 
 - Exploración de carpetas con navegación Atrás del navegador, búsqueda y ordenación por nombre, tamaño o fecha de modificación
 - Expandir, contraer y navegar por las carpetas mediante el árbol de la barra lateral
-- Vista previa de imágenes compatibles con el navegador, texto sin formato y Markdown con enlaces y tablas; descarga de cualquier archivo
+- Vista previa de imágenes, audio y vídeo compatibles con el navegador, texto sin formato y Markdown con enlaces y tablas; descarga de cualquier archivo
+- Búsqueda dentro de audio y vídeo mediante rangos de bytes HTTP y aviso claro si falla la reproducción
 - Carga múltiple mediante selector de archivos o arrastrar y soltar
 - Progreso individual por archivo con tamaño transferido y estado de finalización
 - Carga en streaming al disco sin almacenar archivos completos en memoria

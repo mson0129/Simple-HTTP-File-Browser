@@ -8,7 +8,8 @@ A dependency-free, single-file web file browser built entirely with the Python s
 
 - Browse folders with browser Back navigation; search or sort by name, size, and modification date
 - Expand, collapse, and navigate folders using the sidebar tree
-- Preview browser-supported images, plain text, and Markdown with links and tables; download any file
+- Preview browser-supported images, audio, video, plain text, and Markdown with links and tables; download any file
+- Seek through audio and video with HTTP byte-range support; see a clear message when playback fails
 - Upload multiple files using the file picker or drag and drop
 - Track each file with its own progress bar, transferred size, and completion status
 - Stream upload data to disk without buffering entire files in memory

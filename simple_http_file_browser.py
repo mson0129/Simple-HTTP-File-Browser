@@ -15,7 +15,7 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 PREVIEW_TYPES = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -24,6 +24,11 @@ PREVIEW_TYPES = {
     ".apng": "image/apng",
     ".txt": "text/plain; charset=utf-8", ".text": "text/plain; charset=utf-8",
     ".md": "text/plain; charset=utf-8", ".markdown": "text/plain; charset=utf-8",
+    ".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime",
+    ".webm": "video/webm", ".ogv": "video/ogg",
+    ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac",
+    ".wav": "audio/wav", ".ogg": "audio/ogg", ".oga": "audio/ogg",
+    ".flac": "audio/flac",
 }
 
 INDEX_HTML = r'''<!doctype html>
@@ -31,9 +36,10 @@ INDEX_HTML = r'''<!doctype html>
 <title>Simple File Browser</title><style>
 :root{--bg:#f3f6fa;--panel:#fff;--line:#dbe3ec;--text:#17212b;--muted:#687787;--blue:#1677ff;--blue2:#eaf3ff;--danger:#d9363e;--shadow:0 7px 28px #24405d18}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}button,input{font:inherit}.app{min-height:100vh}.top{height:58px;background:#172b4d;color:#fff;display:flex;align-items:center;padding:0 22px;gap:12px;box-shadow:0 2px 10px #0003}.logo{width:31px;height:31px;border-radius:8px;background:linear-gradient(145deg,#40a9ff,#096dd9);display:grid;place-items:center;font-size:18px}.top strong{font-size:16px}.top .status{margin-left:auto;color:#cbd7e7;font-size:12px}.layout{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:calc(100vh - 58px)}aside{padding:16px 10px;background:#fff;border-right:1px solid var(--line);overflow:auto;max-height:calc(100vh - 58px)}.tree{min-width:0}.tree-row{display:flex;align-items:center;height:34px;border-radius:7px;white-space:nowrap}.tree-row:hover{background:#f5f9ff}.tree-row.active{background:var(--blue2);color:var(--blue);font-weight:650}.tree-toggle,.tree-name{border:0;background:none;cursor:pointer;color:inherit;padding:0}.tree-toggle{width:22px;min-width:22px;height:30px;color:var(--muted)}.tree-spacer{width:22px;min-width:22px}.tree-name{min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left;padding:6px 8px 6px 2px;flex:1}.main{padding:22px 26px;min-width:0}.crumbs{display:flex;align-items:center;gap:5px;min-height:33px;overflow:auto;white-space:nowrap}.crumbs button{border:0;background:none;color:var(--blue);cursor:pointer;padding:4px}.bar{display:flex;gap:8px;align-items:center;margin:12px 0}.btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:8px 12px;cursor:pointer;color:var(--text)}.btn:hover{border-color:#8abfff;color:var(--blue)}.primary{background:var(--blue);border-color:var(--blue);color:white}.primary:hover{color:white;background:#096dd9}.search{margin-left:auto;min-width:220px;border:1px solid var(--line);border-radius:7px;padding:8px 11px;outline:none}.search:focus{border-color:var(--blue)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}.head,.row{display:grid;grid-template-columns:minmax(260px,1fr) 110px 170px 82px;align-items:center}.head{background:#f7f9fc;color:var(--muted);font-size:12px;border-bottom:1px solid var(--line);padding:9px 14px}.head span{cursor:pointer}.row{padding:8px 14px;min-height:49px;border-bottom:1px solid #edf1f5}.row:last-child{border-bottom:0}.row:hover{background:#f5f9ff}.name{display:flex;align-items:center;min-width:0;gap:11px}.name button{border:0;background:none;padding:0;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;color:var(--text)}.name button:hover{color:var(--blue)}.icon{font-size:23px;width:26px;text-align:center}.meta{color:var(--muted);font-size:12px}.actions{display:flex;gap:4px;justify-content:flex-end}.iconbtn{border:0;background:none;color:#718096;cursor:pointer;padding:5px}.iconbtn:hover{color:var(--blue)}.empty{padding:70px 20px;text-align:center;color:var(--muted)}.drop{position:fixed;inset:0;background:#1677ff24;z-index:9;display:none;place-items:center;border:4px dashed var(--blue);font-size:24px;color:var(--blue);font-weight:700}.drop.on{display:grid}.upload-panel{position:fixed;right:24px;bottom:24px;width:min(390px,calc(100vw - 32px));z-index:8;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 14px 45px #172b4d35;padding:16px}.upload-panel[hidden]{display:none}.upload-title{font-weight:700;margin-bottom:10px}.upload-list{max-height:min(55vh,420px);overflow:auto}.upload-item{padding:9px 0;border-top:1px solid var(--line)}.upload-item:first-child{border-top:0}.upload-item-head{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px}.upload-item-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.upload-item-status{color:var(--muted);white-space:nowrap}.upload-item-status.complete{color:#17803d;font-weight:650}.upload-item-status.failed{color:var(--danger);font-weight:650}.upload-track{height:8px;background:#e8edf3;border-radius:99px;overflow:hidden}.upload-fill{height:100%;width:0;background:linear-gradient(90deg,#4096ff,var(--blue));border-radius:99px;transition:width .12s linear}.upload-fill.complete{background:#35a866}.upload-stats{margin-top:5px;color:var(--muted);font-size:11px;text-align:right}.toast{position:fixed;right:24px;bottom:24px;max-width:380px;padding:11px 16px;background:#17212beF;color:#fff;border-radius:8px;box-shadow:var(--shadow);opacity:0;transform:translateY(12px);pointer-events:none;transition:.2s}.toast.on{opacity:1;transform:none}.danger{color:var(--danger)}dialog{border:0;border-radius:11px;box-shadow:0 18px 70px #0005;padding:0;min-width:340px}dialog::backdrop{background:#14203377}.modal{padding:20px}.modal h3{margin:0 0 15px}.modal input{width:100%;padding:9px;border:1px solid var(--line);border-radius:7px}.modal .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}@media(max-width:760px){.layout{grid-template-columns:1fr}aside{display:none}.main{padding:14px}.head,.row{grid-template-columns:minmax(130px,1fr) 80px 72px}.date{display:none}.search{min-width:0;width:130px}.bar{flex-wrap:wrap}}
 </style></head><body><div class="app"><header class="top"><div class="logo">📁</div><strong id="title">Simple File Browser</strong><span class="status" id="status"></span></header><div class="layout"><aside><div class="tree" id="tree"></div></aside><main class="main"><div class="crumbs" id="crumbs"></div><div class="bar"><button class="btn primary write" onclick="pickFiles()" data-i18n="upload">↑ Upload</button><button class="btn write" onclick="newFolder()" data-i18n="newFolder">＋ New folder</button><button class="btn" onclick="load()" data-i18n="refresh">↻ Refresh</button><input class="search" id="search" data-i18n-placeholder="search" placeholder="Search this folder" oninput="render()"></div><section class="panel"><div class="head"><span onclick="sortBy('name')" data-i18n="name">Name</span><span onclick="sortBy('size')" data-i18n="size">Size</span><span class="date" onclick="sortBy('mtime')" data-i18n="modified">Date modified</span><span></span></div><div id="files"></div></section></main></div></div><input id="picker" type="file" multiple hidden><div class="drop" id="drop" data-i18n="drop">Drop files here to upload</div><div class="upload-panel" id="uploadPanel" hidden><div class="upload-title" id="uploadTitle">Uploading…</div><div id="uploadList"></div></div><div class="toast" id="toast"></div><dialog id="dialog"><div class="modal"><h3 id="dlgTitle"></h3><input id="dlgInput"><div class="foot"><button class="btn" onclick="dialog.close()" data-i18n="cancel">Cancel</button><button class="btn primary" id="dlgOk" data-i18n="confirm">Confirm</button></div></div></dialog>
-<dialog id="previewDialog" class="preview-dialog" aria-labelledby="previewTitle"><div class="preview-head"><strong id="previewTitle"></strong><button class="btn" type="button" onclick="document.querySelector('#previewDialog').close()" data-i18n="close">Close</button></div><div class="preview-body"><img id="previewImage" alt="" hidden><pre id="previewText" hidden></pre><div id="previewMarkdown" hidden></div><p id="previewError" hidden></p></div></dialog>
+<dialog id="previewDialog" class="preview-dialog" aria-labelledby="previewTitle"><div class="preview-head"><strong id="previewTitle"></strong><button class="btn" type="button" onclick="document.querySelector('#previewDialog').close()" data-i18n="close">Close</button></div><div class="preview-body"><img id="previewImage" alt="" hidden><video id="previewVideo" controls playsinline preload="metadata" hidden></video><audio id="previewAudio" controls preload="metadata" hidden></audio><pre id="previewText" hidden></pre><div id="previewMarkdown" hidden></div><p id="previewError" hidden></p></div></dialog>
 <style>.head,.row{grid-template-columns:minmax(260px,1fr) 110px 170px 132px}.preview-dialog{width:min(1100px,92vw);max-width:92vw;max-height:92vh}.preview-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;border-bottom:1px solid var(--line)}.preview-head strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.preview-body{display:grid;place-items:center;min-height:160px;padding:16px;overflow:auto}.preview-body img{display:block;max-width:100%;max-height:calc(92vh - 105px);object-fit:contain}.preview-body img[hidden],.preview-body pre[hidden],.preview-body div[hidden]{display:none}.preview-body pre,.preview-body #previewMarkdown{width:100%;max-height:calc(92vh - 105px);overflow:auto;margin:0}.preview-body pre{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}.preview-body #previewMarkdown{line-height:1.6;overflow-wrap:anywhere}.preview-body #previewMarkdown h1,.preview-body #previewMarkdown h2{border-bottom:1px solid var(--line);padding-bottom:6px}.preview-body #previewMarkdown pre{background:#f5f7fa;padding:12px;border-radius:7px}.preview-body #previewMarkdown blockquote{border-left:3px solid var(--line);padding-left:12px;color:var(--muted)}.preview-body p{color:var(--danger)}.iconbtn svg{display:block;width:18px;height:18px}@media(max-width:760px){.head,.row{grid-template-columns:minmax(130px,1fr) 80px 120px}}</style>
 <style>.preview-body #previewMarkdown p{color:var(--text)}.preview-body #previewError{color:var(--danger)}.preview-body #previewMarkdown a{color:var(--blue);text-decoration:underline}.preview-body #previewMarkdown table{border-collapse:collapse;display:block;max-width:100%;overflow-x:auto;margin:14px 0}.preview-body #previewMarkdown th,.preview-body #previewMarkdown td{border:1px solid var(--line);padding:7px 11px;min-width:70px}.preview-body #previewMarkdown th{background:#f7f9fc;font-weight:650}</style>
+<style>.preview-body video{display:block;max-width:100%;max-height:calc(92vh - 105px)}.preview-body audio{display:block;width:min(100%,600px)}.preview-body video[hidden],.preview-body audio[hidden]{display:none}</style>
 <script>
 const M={
  'en-US':{allFiles:'▣ All files',upload:'↑ Upload',newFolder:'＋ New folder',refresh:'↻ Refresh',search:'Search this folder',name:'Name',size:'Size',modified:'Date modified',drop:'Drop files here to upload',cancel:'Cancel',confirm:'Confirm',readWrite:'Read / write',readOnly:'Read only',home:'🏠 Home',noResults:'No matching files.',empty:'This folder is empty.',download:'Download',rename:'Rename',delete:'Delete',newFolderName:'New folder name',folderCreated:'Folder created.',renamed:'Name changed.',deleteAsk:n=>`Permanently delete “${n}”? If it is a folder, all files and subfolders inside it will also be deleted.`,deleted:'Deleted.',uploading:'Uploading…',processing:'Processing…',queued:'Queued',uploadingFile:'Uploading…',complete:'✓ Complete',failed:'Failed',uploadSummary:(done,total,failed)=>failed?`${done}/${total} uploaded, ${failed} failed.`:`${done} file(s) uploaded.`,uploaded:n=>`${n} file(s) uploaded.`,requestFailed:'The request could not be completed.'},
@@ -45,6 +51,10 @@ Object.assign(M['en-US'],{preview:'Preview',close:'Close',previewFailed:'This fi
 Object.assign(M['es-ES'],{preview:'Vista previa',close:'Cerrar',previewFailed:'No se pudo mostrar el archivo.'});
 Object.assign(M['ja-JP'],{preview:'プレビュー',close:'閉じる',previewFailed:'ファイルをプレビューできませんでした。'});
 Object.assign(M['ko-KR'],{preview:'미리보기',close:'닫기',previewFailed:'파일을 미리 볼 수 없습니다.'});
+M['en-US'].mediaFailed='This media cannot be played. The codec may be unsupported, or the file may be damaged.';
+M['es-ES'].mediaFailed='No se puede reproducir este archivo. Es posible que el códec no sea compatible o que el archivo esté dañado.';
+M['ja-JP'].mediaFailed='このメディアを再生できません。コーデックが非対応か、ファイルが破損している可能性があります。';
+M['ko-KR'].mediaFailed='이 미디어를 재생할 수 없습니다. 코덱이 지원되지 않거나 파일이 손상되었을 수 있습니다.';
 const LANG_MAP={en:'en-US',es:'es-ES',ja:'ja-JP',ko:'ko-KR'};
 const LOCALE=(navigator.languages||[navigator.language||'en']).map(x=>LANG_MAP[x.toLowerCase().split('-')[0]]).find(Boolean)||'en-US';
 const t=(key,...args)=>typeof M[LOCALE][key]==='function'?M[LOCALE][key](...args):M[LOCALE][key];
@@ -67,7 +77,9 @@ function esc(s){let d=document.createElement('div');d.textContent=s;return d.inn
 function human(n){if(n==null)return '—';let u=['B','KB','MB','GB','TB'],i=0;while(n>=1024&&i<4){n/=1024;i++}return (i?n.toFixed(n<10?1:0):n)+' '+u[i]}
 function sortBy(k){sortAsc=sortKey===k?!sortAsc:true;sortKey=k;render()}
 const imagePreviewPattern=/\.(?:png|jpe?g|gif|webp|svg|bmp|avif|ico|apng)$/i;
-const previewPattern=/\.(?:png|jpe?g|gif|webp|svg|bmp|avif|ico|apng|txt|text|md|markdown)$/i;
+const videoPreviewPattern=/\.(?:mp4|m4v|mov|webm|ogv)$/i;
+const audioPreviewPattern=/\.(?:mp3|m4a|aac|wav|ogg|oga|flac)$/i;
+const previewPattern=/\.(?:png|jpe?g|gif|webp|svg|bmp|avif|ico|apng|txt|text|md|markdown|mp4|m4v|mov|webm|ogv|mp3|m4a|aac|wav|ogg|oga|flac)$/i;
 const eyeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
 function render(){let q=$('#search').value.toLocaleLowerCase(LOCALE),a=items.filter(x=>x.name.toLocaleLowerCase(LOCALE).includes(q));a.sort((x,y)=>{if(x.dir!==y.dir)return x.dir?-1:1;let v=sortKey==='name'?x.name.localeCompare(y.name,LOCALE,{numeric:true,sensitivity:'base'}):(x[sortKey]||0)-(y[sortKey]||0);return sortAsc?v:-v});let e=$('#files');if(!a.length){e.innerHTML='<div class="empty">'+(q?t('noResults'):t('empty'))+'</div>';return}e.innerHTML=a.map(x=>{let p=path+(path?'/':'')+x.name,n=JSON.stringify(x.name).replaceAll('"','&quot;'),qp=JSON.stringify(p).replaceAll('"','&quot;');return '<div class="row"><div class="name"><span class="icon">'+(x.dir?'📁':'📄')+'</span><button title="'+esc(x.name)+'" onclick="openItem('+qp+','+x.dir+')">'+esc(x.name)+'</button></div><div class="meta">'+human(x.size)+'</div><div class="meta date">'+new Date(x.mtime*1000).toLocaleString(LOCALE)+'</div><div class="actions">'+(!x.dir?(previewPattern.test(x.name)?'<button class="iconbtn" type="button" title="'+t('preview')+'" aria-label="'+t('preview')+'" onclick="preview('+qp+')">'+eyeIcon+'</button>':'')+'<button class="iconbtn" title="'+t('download')+'" onclick="download('+qp+')">↓</button>':'')+(writable?'<button class="iconbtn" title="'+t('rename')+'" onclick="renameItem('+n+')">✎</button><button class="iconbtn danger" title="'+t('delete')+'" onclick="removeItem('+n+')">×</button>':'')+'</div></div>'}).join('')}
 function markdownInto(source,container,documentPath){
@@ -81,8 +93,9 @@ function markdownInto(source,container,documentPath){
   let heading=line.match(/^(#{1,6})\s+(.+)$/),bullet=line.match(/^\s*[-*+]\s+(.+)$/),quote=line.match(/^>\s?(.*)$/),tag,value;if(heading){tag='h'+heading[1].length;value=heading[2];list=null}else if(bullet){if(!list){list=document.createElement('ul');container.append(list)}tag='li';value=bullet[1]}else if(quote){tag='blockquote';value=quote[1];list=null}else{tag='p';value=line;list=null}let element=document.createElement(tag);inline(element,value);(tag==='li'?list:container).append(element)}
 }
 let previewRequest=0;
-async function preview(p,recordHistory=true){let img=$('#previewImage'),textView=$('#previewText'),markdown=$('#previewMarkdown'),error=$('#previewError'),dialog=$('#previewDialog'),request=++previewRequest;if(recordHistory&&(!dialog.open||history.state?.preview!==p)){let previewDepth=dialog.open?(history.state?.previewDepth||1)+1:1;history.pushState({path,preview:p,previewDepth},'',location.href)}$('#previewTitle').textContent=p.split('/').pop();img.hidden=textView.hidden=markdown.hidden=error.hidden=true;textView.textContent='';markdown.replaceChildren();if(!dialog.open)dialog.showModal();if(imagePreviewPattern.test(p)){img.onload=()=>{if(request===previewRequest)img.hidden=false};img.onerror=()=>{if(request===previewRequest){error.textContent=t('previewFailed');error.hidden=false}};img.src='/api/preview?path='+encodeURIComponent(p);return}try{let response=await fetch('/api/preview?path='+encodeURIComponent(p));if(!response.ok)throw Error();let body=await response.text();if(request!==previewRequest)return;if(/\.(?:md|markdown)$/i.test(p)){markdownInto(body,markdown,p);markdown.hidden=false}else{textView.textContent=body;textView.hidden=false}}catch{if(request===previewRequest){error.textContent=t('previewFailed');error.hidden=false}}}
-$('#previewDialog').addEventListener('close',()=>{previewRequest++;let img=$('#previewImage');img.removeAttribute('src');img.onload=img.onerror=null;if(history.state?.preview)history.go(-Math.max(1,history.state.previewDepth||1))});
+function clearPreviewSources(){let img=$('#previewImage');img.onload=img.onerror=null;img.removeAttribute('src');for(let media of [$('#previewVideo'),$('#previewAudio')]){media.pause();media.onerror=null;media.removeAttribute('src');media.load();media.hidden=true}}
+async function preview(p,recordHistory=true){let img=$('#previewImage'),textView=$('#previewText'),markdown=$('#previewMarkdown'),error=$('#previewError'),dialog=$('#previewDialog'),request=++previewRequest;if(recordHistory&&(!dialog.open||history.state?.preview!==p)){let previewDepth=dialog.open?(history.state?.previewDepth||1)+1:1;history.pushState({path,preview:p,previewDepth},'',location.href)}$('#previewTitle').textContent=p.split('/').pop();clearPreviewSources();img.hidden=textView.hidden=markdown.hidden=error.hidden=true;textView.textContent='';markdown.replaceChildren();if(!dialog.open)dialog.showModal();let url='/api/preview?path='+encodeURIComponent(p);if(imagePreviewPattern.test(p)){img.onload=()=>{if(request===previewRequest)img.hidden=false};img.onerror=()=>{if(request===previewRequest){error.textContent=t('previewFailed');error.hidden=false}};img.src=url;return}if(videoPreviewPattern.test(p)||audioPreviewPattern.test(p)){let media=$(videoPreviewPattern.test(p)?'#previewVideo':'#previewAudio');media.onerror=()=>{if(request===previewRequest){media.hidden=true;error.textContent=t('mediaFailed');error.hidden=false}};media.hidden=false;media.src=url;media.load();return}try{let response=await fetch(url);if(!response.ok)throw Error();let body=await response.text();if(request!==previewRequest)return;if(/\.(?:md|markdown)$/i.test(p)){markdownInto(body,markdown,p);markdown.hidden=false}else{textView.textContent=body;textView.hidden=false}}catch{if(request===previewRequest){error.textContent=t('previewFailed');error.hidden=false}}}
+$('#previewDialog').addEventListener('close',()=>{previewRequest++;clearPreviewSources();if(history.state?.preview)history.go(-Math.max(1,history.state.previewDepth||1))});
 $('#previewDialog').addEventListener('click',event=>{let dialog=$('#previewDialog'),rect=dialog.getBoundingClientRect();if(event.target===dialog&&(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom))dialog.close()});
 function openItem(p,d){d?load(p):download(p)}function download(p){location.href='/api/download?path='+encodeURIComponent(p)}
 function promptBox(title,value,cb){$('#dlgTitle').textContent=title;$('#dlgInput').value=value||'';$('#dlgOk').onclick=()=>{let v=$('#dlgInput').value.trim();if(v){dialog.close();cb(v)}};dialog.showModal();setTimeout(()=>{$('#dlgInput').focus();$('#dlgInput').select()},30)}
@@ -195,6 +208,56 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
             raise FileNotFoundError("The file or folder does not exist.")
         return target
 
+    def send_file(self, target, preview):
+        size = target.stat().st_size
+        range_header = None if self.headers.get("If-Range") else self.headers.get("Range")
+        start, end = 0, size - 1
+        if range_header:
+            match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
+            if match and (match.group(1) or match.group(2)):
+                if match.group(1):
+                    start = int(match.group(1))
+                    end = min(int(match.group(2)), size - 1) if match.group(2) else size - 1
+                else:
+                    suffix = int(match.group(2))
+                    start = max(0, size - suffix)
+                valid = size > 0 and start < size and end >= start
+                if not match.group(1):
+                    valid = valid and suffix > 0
+            else:
+                valid = False
+            if not valid:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+
+        content_type = PREVIEW_TYPES.get(target.suffix.lower()) if preview else mimetypes.guess_type(target.name)[0]
+        self.send_response(206 if range_header else 200)
+        self.send_header("Content-Type", content_type or "application/octet-stream")
+        self.send_header("Content-Disposition", ("inline" if preview else "attachment") + "; filename*=UTF-8''" + urllib.parse.quote(target.name))
+        self.send_header("Accept-Ranges", "bytes")
+        if range_header:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        if preview:
+            self.send_header("Content-Security-Policy", "sandbox; default-src 'none'")
+            self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(end - start + 1 if range_header else size))
+        self.end_headers()
+        with target.open("rb") as source:
+            if range_header:
+                source.seek(start)
+                remaining = end - start + 1
+                while remaining:
+                    chunk = source.read(min(1024 * 1024, remaining))
+                    if not chunk: break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+            else:
+                shutil.copyfileobj(source, self.wfile)
+
     def do_GET(self):
         parsed = urllib.parse.urlsplit(self.path)
         query = urllib.parse.parse_qs(parsed.query)
@@ -223,16 +286,9 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
                 target = self.resolve(query.get("path", [""])[0])
                 if not target.is_file(): raise ValueError("The requested path is not a file.")
                 preview = parsed.path == "/api/preview"
-                content_type = PREVIEW_TYPES.get(target.suffix.lower()) if preview else mimetypes.guess_type(target.name)[0]
-                if preview and not content_type: raise ValueError("This file cannot be previewed.")
-                self.send_response(200)
-                self.send_header("Content-Type", content_type or "application/octet-stream")
-                self.send_header("Content-Disposition", ("inline" if preview else "attachment") + "; filename*=UTF-8''" + urllib.parse.quote(target.name))
-                if preview:
-                    self.send_header("Content-Security-Policy", "sandbox; default-src 'none'")
-                    self.send_header("X-Content-Type-Options", "nosniff")
-                self.send_header("Content-Length", str(target.stat().st_size)); self.end_headers()
-                with target.open("rb") as f: shutil.copyfileobj(f, self.wfile)
+                if preview and target.suffix.lower() not in PREVIEW_TYPES:
+                    raise ValueError("This file cannot be previewed.")
+                self.send_file(target, preview)
             else: self.fail(404, "Not found.")
         except PermissionError as e: self.fail(403, str(e))
         except FileNotFoundError as e: self.fail(404, str(e))
