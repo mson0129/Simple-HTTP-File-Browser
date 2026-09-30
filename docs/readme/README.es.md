@@ -2,12 +2,16 @@
 
 [English](../../README.md) | [한국어](README.ko.md) | Español | [日本語](README.ja.md)
 
+Con escritura habilitada, arrastra una fila de archivo o carpeta a una carpeta de la lista o del árbol lateral para moverla. Los clics en nombres conservan su comportamiento. No se pueden mover contenidos de archivos comprimidos ni sobrescribir elementos existentes.
+
 Un explorador de archivos web en un único archivo, sin dependencias externas y creado completamente con la biblioteca estándar de Python. Ofrece una SPA adaptable inspirada en Synology File Station para explorar y administrar archivos.
 
 ## Funciones
 
 - Exploración de carpetas con navegación Atrás del navegador, búsqueda y ordenación por nombre, tamaño o fecha de modificación
 - Expandir, contraer y navegar por las carpetas mediante el árbol de la barra lateral
+- Explorar archivos ZIP y TAR como carpetas de solo lectura, sin extraerlos al disco
+- Descargar carpetas como ZIP sin compresión (`ZIP_STORED`) en streaming, incluyendo subcarpetas y carpetas vacías
 - Vista previa de imágenes, audio y vídeo compatibles con el navegador, texto sin formato y Markdown con enlaces y tablas; descarga de cualquier archivo
 - Búsqueda dentro de audio y vídeo mediante rangos de bytes HTTP y aviso claro si falla la reproducción
 - Carga múltiple mediante selector de archivos o arrastrar y soltar
@@ -19,6 +23,16 @@ Un explorador de archivos web en un único archivo, sin dependencias externas y 
 - Protección contra recorridos de ruta y escapes mediante enlaces simbólicos
 - Interfaz adaptable para escritorio y dispositivos móviles
 - Selección automática del idioma según las preferencias del navegador: inglés, español, japonés y coreano; los demás idiomas usan inglés
+
+## Exploración de archivos comprimidos
+
+Haz clic en el nombre para explorar un archivo comprimido o usa Descargar para obtener el archivo original. Formatos compatibles: `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz`, `.tbz2`, `.tar.xz` y `.txz`.
+
+Los contenidos permiten descargas, vistas previas, navegación por el árbol y el historial del navegador. Siempre son de solo lectura, incluso si las cargas están habilitadas: no se pueden subir, renombrar, eliminar ni editar archivos dentro del archivo comprimido.
+
+El botón Descargar de una carpeta crea un ZIP sin compresión, también para carpetas dentro de un archivo comprimido. Los datos se envían directamente al navegador sin crear un ZIP temporal. Las entradas ocultas respetan `show_hidden` y se omiten los enlaces simbólicos del sistema de archivos.
+
+No se pueden abrir miembros ZIP cifrados. Se excluyen rutas inseguras y enlaces. Los archivos comprimidos anidados se pueden descargar, pero no explorar como carpetas adicionales. Los archivos grandes pueden tardar más en explorarse o buscarse; los métodos de compresión disponibles dependen de Python. RAR y 7z no son compatibles.
 
 ## Requisitos
 

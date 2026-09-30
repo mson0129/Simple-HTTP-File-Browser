@@ -4,18 +4,151 @@
 from __future__ import annotations
 
 import argparse
+import binascii
+import datetime
 import json
 import mimetypes
 import os
 import re
 import shutil
+import stat
 import sys
+import tarfile
 import tempfile
 import urllib.parse
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 VERSION = "1.5.0"
+
+ARCHIVE_SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tbz", ".tar.xz", ".txz")
+
+
+def is_archive(name):
+    return str(name).lower().endswith(ARCHIVE_SUFFIXES)
+
+
+def archive_member_path(name):
+    """Keep archive names inside their virtual root; never extract them."""
+    if not name or name.startswith("/") or "\\" in name or "\0" in name:
+        return None
+    parts = [part for part in name.split("/") if part not in ("", ".")]
+    if not parts or any(part == ".." for part in parts) or ":" in parts[0]:
+        return None
+    return "/".join(parts)
+
+
+def zip_member_name(member):
+    """Honor Unicode ZIP names, then recover legacy Korean Windows names."""
+    if member.flag_bits & 0x800:
+        return member.filename
+    raw = member.filename.encode("cp437")
+    extra = member.extra
+    while len(extra) >= 4:
+        tag = int.from_bytes(extra[:2], "little")
+        size = int.from_bytes(extra[2:4], "little")
+        value, extra = extra[4:4 + size], extra[4 + size:]
+        if len(value) != size: break
+        # Info-ZIP Unicode Path extra field, validated against original bytes.
+        if tag == 0x7075 and size >= 5 and value[0] == 1 and int.from_bytes(value[1:5], "little") == binascii.crc32(raw):
+            try: return value[5:].decode("utf-8")
+            except UnicodeDecodeError: pass
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            decoded = raw.decode("cp949")
+            if any("\uac00" <= char <= "\ud7a3" for char in decoded):
+                return decoded
+        except UnicodeDecodeError:
+            pass
+    return member.filename
+
+
+class ArchiveReader:
+    """A read-only virtual directory backed by ZIP or TAR members."""
+
+    def __init__(self, target):
+        self.target = target
+        self.archive = None
+        self.entries = {}
+
+    def __enter__(self):
+        try:
+            self.zip = self.target.name.lower().endswith(".zip")
+            self.archive = zipfile.ZipFile(self.target) if self.zip else tarfile.open(self.target, "r:*")
+            members = self.archive.infolist() if self.zip else self.archive.getmembers()
+            fallback_time = self.target.stat().st_mtime
+            for member in members:
+                name = archive_member_path(zip_member_name(member) if self.zip else member.name)
+                if name is None: continue
+                if self.zip:
+                    if stat.S_ISLNK(member.external_attr >> 16): continue
+                    is_dir, size = member.is_dir(), member.file_size
+                    try: mtime = datetime.datetime(*member.date_time).timestamp()
+                    except (ValueError, OverflowError, OSError): mtime = fallback_time
+                else:
+                    if not (member.isdir() or member.isfile()): continue
+                    is_dir, size, mtime = member.isdir(), member.size, member.mtime
+                parts = name.split("/")
+                for depth in range(1, len(parts)):
+                    parent = "/".join(parts[:depth])
+                    self.entries.setdefault(parent, {"dir": True, "size": None, "mtime": fallback_time, "member": None})
+                # Ambiguous duplicate paths retain their first visible entry.
+                self.entries.setdefault(name, {"dir": is_dir, "size": None if is_dir else size, "mtime": mtime, "member": member})
+            return self
+        except Exception:
+            if self.archive is not None: self.archive.close()
+            raise
+
+    def __exit__(self, *_args):
+        self.archive.close()
+
+    def list(self, folder, show_hidden):
+        if folder:
+            entry = self.entries.get(folder)
+            if entry is None: raise FileNotFoundError("The archive folder does not exist.")
+            if not entry["dir"]: raise ValueError("The requested archive path is not a folder.")
+        prefix = folder + "/" if folder else ""
+        items = []
+        for name, entry in self.entries.items():
+            if not name.startswith(prefix): continue
+            child = name[len(prefix):]
+            if not child or "/" in child or (not show_hidden and child.startswith(".")): continue
+            items.append({"name": child, "dir": entry["dir"], "size": entry["size"], "mtime": entry["mtime"]})
+        return items
+
+    def open(self, name):
+        entry = self.entries.get(name)
+        if entry is None: raise FileNotFoundError("The archive file does not exist.")
+        if entry["dir"]: raise ValueError("The requested archive path is not a file.")
+        member = entry["member"]
+        if self.zip:
+            if member.flag_bits & 1: raise ValueError("Encrypted ZIP members cannot be opened without a password.")
+            try: return self.archive.open(member)
+            except (NotImplementedError, RuntimeError) as error:
+                raise ValueError("This ZIP compression or encryption method is not supported.") from error
+        return self.archive.extractfile(member)
+
+
+class ZipDownloadWriter:
+    """An unseekable ZIP output, written directly to the HTTP response."""
+
+    def __init__(self, stream):
+        self.stream = stream
+        self.position = 0
+
+    def write(self, data):
+        self.stream.write(data)
+        self.position += len(data)
+        return len(data)
+
+    def tell(self):
+        return self.position
+
+    def flush(self):
+        self.stream.flush()
 
 PREVIEW_TYPES = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -34,6 +167,7 @@ PREVIEW_TYPES = {
 INDEX_HTML = r'''<!doctype html>
 <html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Simple File Browser</title><style>
+.row[draggable="true"]{cursor:grab}.row.moving{opacity:.45}.move-target{background:#eaf3ff!important;outline:2px solid #1677ff;outline-offset:-2px}
 :root{--bg:#f3f6fa;--panel:#fff;--line:#dbe3ec;--text:#17212b;--muted:#687787;--blue:#1677ff;--blue2:#eaf3ff;--danger:#d9363e;--shadow:0 7px 28px #24405d18}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}button,input{font:inherit}.app{min-height:100vh}.top{height:58px;background:#172b4d;color:#fff;display:flex;align-items:center;padding:0 22px;gap:12px;box-shadow:0 2px 10px #0003}.logo{width:31px;height:31px;border-radius:8px;background:linear-gradient(145deg,#40a9ff,#096dd9);display:grid;place-items:center;font-size:18px}.top strong{font-size:16px}.top .status{margin-left:auto;color:#cbd7e7;font-size:12px}.layout{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:calc(100vh - 58px)}aside{padding:16px 10px;background:#fff;border-right:1px solid var(--line);overflow:auto;max-height:calc(100vh - 58px)}.tree{min-width:0}.tree-row{display:flex;align-items:center;height:34px;border-radius:7px;white-space:nowrap}.tree-row:hover{background:#f5f9ff}.tree-row.active{background:var(--blue2);color:var(--blue);font-weight:650}.tree-toggle,.tree-name{border:0;background:none;cursor:pointer;color:inherit;padding:0}.tree-toggle{width:22px;min-width:22px;height:30px;color:var(--muted)}.tree-spacer{width:22px;min-width:22px}.tree-name{min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left;padding:6px 8px 6px 2px;flex:1}.main{padding:22px 26px;min-width:0}.crumbs{display:flex;align-items:center;gap:5px;min-height:33px;overflow:auto;white-space:nowrap}.crumbs button{border:0;background:none;color:var(--blue);cursor:pointer;padding:4px}.bar{display:flex;gap:8px;align-items:center;margin:12px 0}.btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:8px 12px;cursor:pointer;color:var(--text)}.btn:hover{border-color:#8abfff;color:var(--blue)}.primary{background:var(--blue);border-color:var(--blue);color:white}.primary:hover{color:white;background:#096dd9}.search{margin-left:auto;min-width:220px;border:1px solid var(--line);border-radius:7px;padding:8px 11px;outline:none}.search:focus{border-color:var(--blue)}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}.head,.row{display:grid;grid-template-columns:minmax(260px,1fr) 110px 170px 82px;align-items:center}.head{background:#f7f9fc;color:var(--muted);font-size:12px;border-bottom:1px solid var(--line);padding:9px 14px}.head span{cursor:pointer}.row{padding:8px 14px;min-height:49px;border-bottom:1px solid #edf1f5}.row:last-child{border-bottom:0}.row:hover{background:#f5f9ff}.name{display:flex;align-items:center;min-width:0;gap:11px}.name button{border:0;background:none;padding:0;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;color:var(--text)}.name button:hover{color:var(--blue)}.icon{font-size:23px;width:26px;text-align:center}.meta{color:var(--muted);font-size:12px}.actions{display:flex;gap:4px;justify-content:flex-end}.iconbtn{border:0;background:none;color:#718096;cursor:pointer;padding:5px}.iconbtn:hover{color:var(--blue)}.empty{padding:70px 20px;text-align:center;color:var(--muted)}.drop{position:fixed;inset:0;background:#1677ff24;z-index:9;display:none;place-items:center;border:4px dashed var(--blue);font-size:24px;color:var(--blue);font-weight:700}.drop.on{display:grid}.upload-panel{position:fixed;right:24px;bottom:24px;width:min(390px,calc(100vw - 32px));z-index:8;background:#fff;border:1px solid var(--line);border-radius:11px;box-shadow:0 14px 45px #172b4d35;padding:16px}.upload-panel[hidden]{display:none}.upload-title{font-weight:700;margin-bottom:10px}.upload-list{max-height:min(55vh,420px);overflow:auto}.upload-item{padding:9px 0;border-top:1px solid var(--line)}.upload-item:first-child{border-top:0}.upload-item-head{display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:6px}.upload-item-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.upload-item-status{color:var(--muted);white-space:nowrap}.upload-item-status.complete{color:#17803d;font-weight:650}.upload-item-status.failed{color:var(--danger);font-weight:650}.upload-track{height:8px;background:#e8edf3;border-radius:99px;overflow:hidden}.upload-fill{height:100%;width:0;background:linear-gradient(90deg,#4096ff,var(--blue));border-radius:99px;transition:width .12s linear}.upload-fill.complete{background:#35a866}.upload-stats{margin-top:5px;color:var(--muted);font-size:11px;text-align:right}.toast{position:fixed;right:24px;bottom:24px;max-width:380px;padding:11px 16px;background:#17212beF;color:#fff;border-radius:8px;box-shadow:var(--shadow);opacity:0;transform:translateY(12px);pointer-events:none;transition:.2s}.toast.on{opacity:1;transform:none}.danger{color:var(--danger)}dialog{border:0;border-radius:11px;box-shadow:0 18px 70px #0005;padding:0;min-width:340px}dialog::backdrop{background:#14203377}.modal{padding:20px}.modal h3{margin:0 0 15px}.modal input{width:100%;padding:9px;border:1px solid var(--line);border-radius:7px}.modal .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}@media(max-width:760px){.layout{grid-template-columns:1fr}aside{display:none}.main{padding:14px}.head,.row{grid-template-columns:minmax(130px,1fr) 80px 72px}.date{display:none}.search{min-width:0;width:130px}.bar{flex-wrap:wrap}}
 </style></head><body><div class="app"><header class="top"><div class="logo">📁</div><strong id="title">Simple File Browser</strong><span class="status" id="status"></span></header><div class="layout"><aside><div class="tree" id="tree"></div></aside><main class="main"><div class="crumbs" id="crumbs"></div><div class="bar"><button class="btn primary write" onclick="pickFiles()" data-i18n="upload">↑ Upload</button><button class="btn write" onclick="newFolder()" data-i18n="newFolder">＋ New folder</button><button class="btn" onclick="load()" data-i18n="refresh">↻ Refresh</button><input class="search" id="search" data-i18n-placeholder="search" placeholder="Search this folder" oninput="render()"></div><section class="panel"><div class="head"><span onclick="sortBy('name')" data-i18n="name">Name</span><span onclick="sortBy('size')" data-i18n="size">Size</span><span class="date" onclick="sortBy('mtime')" data-i18n="modified">Date modified</span><span></span></div><div id="files"></div></section></main></div></div><input id="picker" type="file" multiple hidden><div class="drop" id="drop" data-i18n="drop">Drop files here to upload</div><div class="upload-panel" id="uploadPanel" hidden><div class="upload-title" id="uploadTitle">Uploading…</div><div id="uploadList"></div></div><div class="toast" id="toast"></div><dialog id="dialog"><div class="modal"><h3 id="dlgTitle"></h3><input id="dlgInput"><div class="foot"><button class="btn" onclick="dialog.close()" data-i18n="cancel">Cancel</button><button class="btn primary" id="dlgOk" data-i18n="confirm">Confirm</button></div></div></dialog>
 <dialog id="previewDialog" class="preview-dialog" aria-labelledby="previewTitle"><div class="preview-head"><strong id="previewTitle"></strong><button class="btn" type="button" onclick="document.querySelector('#previewDialog').close()" data-i18n="close">Close</button></div><div class="preview-body"><img id="previewImage" alt="" hidden><video id="previewVideo" controls playsinline preload="metadata" hidden></video><audio id="previewAudio" controls preload="metadata" hidden></audio><pre id="previewText" hidden></pre><div id="previewMarkdown" hidden></div><p id="previewError" hidden></p></div></dialog>
@@ -56,24 +190,37 @@ M['es-ES'].mediaFailed='No se puede reproducir este archivo. Es posible que el c
 M['ja-JP'].mediaFailed='このメディアを再生できません。コーデックが非対応か、ファイルが破損している可能性があります。';
 M['ko-KR'].mediaFailed='이 미디어를 재생할 수 없습니다. 코덱이 지원되지 않거나 파일이 손상되었을 수 있습니다.';
 const LANG_MAP={en:'en-US',es:'es-ES',ja:'ja-JP',ko:'ko-KR'};
+Object.entries({'en-US':'Moved.','es-ES':'Movido.','ja-JP':'移動しました。','ko-KR':'이동했습니다.'}).forEach(([locale,message])=>M[locale].moved=message);
 const LOCALE=(navigator.languages||[navigator.language||'en']).map(x=>LANG_MAP[x.toLowerCase().split('-')[0]]).find(Boolean)||'en-US';
 const t=(key,...args)=>typeof M[LOCALE][key]==='function'?M[LOCALE][key](...args):M[LOCALE][key];
 document.documentElement.lang=LOCALE;document.querySelectorAll('[data-i18n]').forEach(e=>e.textContent=t(e.dataset.i18n));document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>e.placeholder=t(e.dataset.i18nPlaceholder));
-let path='', items=[], writable=false, uploadActive=false, sortKey='name', sortAsc=true, treeCache=new Map(), treeOpen=new Set(['']);
+let path='', items=[], writable=false, uploadActive=false, sortKey='name', sortAsc=true, treeCache=new Map(), treeOpen=new Set(['']), treeArchives=new Set();
 const $=s=>document.querySelector(s), enc=p=>p.split('/').map(encodeURIComponent).join('/');
 function toast(s,bad=false){let e=$('#toast');e.textContent=s;e.style.background=bad?'#b4232b':'#17212b';e.classList.add('on');setTimeout(()=>e.classList.remove('on'),2600)}
+let internalDrag=null,dragFromControl=false,externalDrag=0;
+function archivePath(p){return [...treeArchives].some(a=>p===a||p.startsWith(a+'/'))}
+function moveTarget(e){let target=e.target.closest('[data-folder]');if(!internalDrag||!target)return null;let p=target.dataset.folder;return archivePath(p)||p===internalDrag.path||p===internalDrag.source||p.startsWith(internalDrag.source+'/')?null:target}
+function clearDrag(){document.querySelectorAll('.moving,.move-target').forEach(e=>e.classList.remove('moving','move-target'));internalDrag=null;externalDrag=0;$('#drop').classList.remove('on')}
+document.addEventListener('pointerdown',e=>{dragFromControl=Boolean(e.target.closest('button,input,a'))});
+document.addEventListener('dragstart',e=>{let row=e.target.closest('.row[data-item]');if(!row)return;if(!writable||dragFromControl){e.preventDefault();return}let source=row.dataset.item;internalDrag={path,name:source.split('/').pop(),source};e.dataTransfer.setData('application/x-file-browser-move',source);e.dataTransfer.effectAllowed='move';row.classList.add('moving')});
+addEventListener('dragenter',e=>{if(internalDrag)return;if([...e.dataTransfer.types].includes('Files')){e.preventDefault();if(writable){externalDrag++;$('#drop').classList.add('on')}}});
+addEventListener('dragleave',e=>{if(internalDrag){let target=e.target.closest('.move-target');if(target&&!target.contains(e.relatedTarget))target.classList.remove('move-target');return}if(--externalDrag<=0){externalDrag=0;$('#drop').classList.remove('on')}});
+addEventListener('dragover',e=>{e.preventDefault();if(internalDrag){document.querySelectorAll('.move-target').forEach(x=>x.classList.remove('move-target'));let target=moveTarget(e);e.dataTransfer.dropEffect=target?'move':'none';if(target)target.classList.add('move-target')}});
+addEventListener('drop',async e=>{e.preventDefault();if(internalDrag){let target=moveTarget(e),source=internalDrag,destination=target?.dataset.folder;clearDrag();if(!target)return;try{await api('/api/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...source,destination})});treeCache.clear();treeArchives.clear();treeOpen=new Set(['']);await load();toast(t('moved'))}catch(error){toast(error.message,true)}return}clearDrag();if(writable&&e.dataTransfer.files.length)upload(e.dataTransfer.files)});
+addEventListener('dragend',clearDrag);
 async function api(url,opt){let r=await fetch(url,opt),data;try{data=await r.json()}catch{data={error:r.statusText}}if(!r.ok)throw Error(data.error||r.statusText);return data}
 let loadRequest=0;
 async function load(p=path,recordHistory=true){let request=++loadRequest;try{let d=await api('/api/list?path='+encodeURIComponent(p)),previous=path;if(request!==loadRequest)return;path=d.path;items=d.items;writable=d.writable;if(recordHistory&&path!==previous)history.pushState({path},'',path?'?path='+encodeURIComponent(path):location.pathname);treeCache.set(path,folderNames(d.items));$('#title').textContent=d.title;$('#status').textContent=writable?t('readWrite'):t('readOnly');document.querySelectorAll('.write').forEach(x=>x.hidden=!writable);crumbs();render();await syncTree(path)}catch(e){if(request===loadRequest)toast(e.message,true)}}
-function folderNames(list){return list.filter(x=>x.dir).map(x=>x.name).sort((a,b)=>a.localeCompare(b,LOCALE,{numeric:true,sensitivity:'base'}))}
-async function ensureTree(p){if(treeCache.has(p))return;let d=await api('/api/list?path='+encodeURIComponent(p));treeCache.set(p,folderNames(d.items))}
+function folderNames(list,parent=path){for(let item of list){let p=parent+(parent?'/':'')+item.name;if(item.archive)treeArchives.add(p);else treeArchives.delete(p)}return list.filter(x=>x.dir||x.archive).map(x=>x.name).sort((a,b)=>a.localeCompare(b,LOCALE,{numeric:true,sensitivity:'base'}))}
+async function ensureTree(p){if(treeCache.has(p))return;let d=await api('/api/list?path='+encodeURIComponent(p));treeCache.set(p,folderNames(d.items,p))}
 async function syncTree(p){let cur='';treeOpen.add('');await ensureTree('');for(let part of (p?p.split('/'):[])){cur+=(cur?'/':'')+part;treeOpen.add(cur);await ensureTree(cur)}renderTree()}
 async function toggleTree(p,e){if(e)e.stopPropagation();if(treeOpen.has(p)){treeOpen.delete(p);renderTree();return}treeOpen.add(p);try{await ensureTree(p);renderTree()}catch(err){treeOpen.delete(p);toast(err.message,true)}}
 function treeToggle(p){if(treeCache.has(p)&&treeCache.get(p).length===0)return '<span class="tree-spacer"></span>';return '<button class="tree-toggle" aria-label="Toggle" onclick="toggleTree('+JSON.stringify(p).replaceAll('\"','&quot;')+',event)">'+(treeOpen.has(p)?'▾':'▸')+'</button>'}
-function treeBranch(parent,depth){return (treeCache.get(parent)||[]).map(name=>{let p=parent+(parent?'/':'')+name,q=JSON.stringify(p).replaceAll('\"','&quot;'),open=treeOpen.has(p);return '<div class="tree-row '+(p===path?'active':'')+'" style="padding-left:'+(4+depth*14)+'px">'+treeToggle(p)+'<button class="tree-name" title="'+esc(name)+'" onclick="load('+q+')">📁 '+esc(name)+'</button></div>'+(open?treeBranch(p,depth+1):'')}).join('')}
-function renderTree(){let rootOpen=treeOpen.has('');$('#tree').innerHTML='<div class="tree-row '+(path===''?'active':'')+'" style="padding-left:4px">'+treeToggle('')+'<button class="tree-name" onclick="load(\'\')">'+t('allFiles')+'</button></div>'+(rootOpen?treeBranch('',1):'')}
+function treeBranch(parent,depth){return (treeCache.get(parent)||[]).map(name=>{let p=parent+(parent?'/':'')+name,q=JSON.stringify(p).replaceAll('\"','&quot;'),open=treeOpen.has(p);return '<div class="tree-row '+(p===path?'active':'')+'" data-folder="'+attr(p)+'" style="padding-left:'+(4+depth*14)+'px">'+treeToggle(p)+'<button class="tree-name" title="'+esc(name)+'" onclick="load('+q+')">'+(treeArchives.has(p)?'📦 ':'📁 ')+esc(name)+'</button></div>'+(open?treeBranch(p,depth+1):'')}).join('')}
+function renderTree(){let rootOpen=treeOpen.has('');$('#tree').innerHTML='<div class="tree-row '+(path===''?'active':'')+'" data-folder="" style="padding-left:4px">'+treeToggle('')+'<button class="tree-name" onclick="load(\'\')">'+t('allFiles')+'</button></div>'+(rootOpen?treeBranch('',1):'')}
 function crumbs(){let e=$('#crumbs'),parts=path?path.split('/'):[];e.innerHTML='<button onclick="load(\'\')">'+t('home')+'</button>';let p='';parts.forEach((x,i)=>{p+=(p?'/':'')+x;e.innerHTML+=' <span>›</span> <button onclick="load('+JSON.stringify(p).replaceAll('"','&quot;')+')">'+esc(x)+'</button>'})}
 function esc(s){let d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function attr(s){return esc(s).replaceAll('"','&quot;')}
 function human(n){if(n==null)return '—';let u=['B','KB','MB','GB','TB'],i=0;while(n>=1024&&i<4){n/=1024;i++}return (i?n.toFixed(n<10?1:0):n)+' '+u[i]}
 function sortBy(k){sortAsc=sortKey===k?!sortAsc:true;sortKey=k;render()}
 const imagePreviewPattern=/\.(?:png|jpe?g|gif|webp|svg|bmp|avif|ico|apng)$/i;
@@ -81,7 +228,7 @@ const videoPreviewPattern=/\.(?:mp4|m4v|mov|webm|ogv)$/i;
 const audioPreviewPattern=/\.(?:mp3|m4a|aac|wav|ogg|oga|flac)$/i;
 const previewPattern=/\.(?:png|jpe?g|gif|webp|svg|bmp|avif|ico|apng|txt|text|md|markdown|mp4|m4v|mov|webm|ogv|mp3|m4a|aac|wav|ogg|oga|flac)$/i;
 const eyeIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
-function render(){let q=$('#search').value.toLocaleLowerCase(LOCALE),a=items.filter(x=>x.name.toLocaleLowerCase(LOCALE).includes(q));a.sort((x,y)=>{if(x.dir!==y.dir)return x.dir?-1:1;let v=sortKey==='name'?x.name.localeCompare(y.name,LOCALE,{numeric:true,sensitivity:'base'}):(x[sortKey]||0)-(y[sortKey]||0);return sortAsc?v:-v});let e=$('#files');if(!a.length){e.innerHTML='<div class="empty">'+(q?t('noResults'):t('empty'))+'</div>';return}e.innerHTML=a.map(x=>{let p=path+(path?'/':'')+x.name,n=JSON.stringify(x.name).replaceAll('"','&quot;'),qp=JSON.stringify(p).replaceAll('"','&quot;');return '<div class="row"><div class="name"><span class="icon">'+(x.dir?'📁':'📄')+'</span><button title="'+esc(x.name)+'" onclick="openItem('+qp+','+x.dir+')">'+esc(x.name)+'</button></div><div class="meta">'+human(x.size)+'</div><div class="meta date">'+new Date(x.mtime*1000).toLocaleString(LOCALE)+'</div><div class="actions">'+(!x.dir?(previewPattern.test(x.name)?'<button class="iconbtn" type="button" title="'+t('preview')+'" aria-label="'+t('preview')+'" onclick="preview('+qp+')">'+eyeIcon+'</button>':'')+'<button class="iconbtn" title="'+t('download')+'" onclick="download('+qp+')">↓</button>':'')+(writable?'<button class="iconbtn" title="'+t('rename')+'" onclick="renameItem('+n+')">✎</button><button class="iconbtn danger" title="'+t('delete')+'" onclick="removeItem('+n+')">×</button>':'')+'</div></div>'}).join('')}
+function render(){let q=$('#search').value.toLocaleLowerCase(LOCALE),a=items.filter(x=>x.name.toLocaleLowerCase(LOCALE).includes(q));a.sort((x,y)=>{if(x.dir!==y.dir)return x.dir?-1:1;let v=sortKey==='name'?x.name.localeCompare(y.name,LOCALE,{numeric:true,sensitivity:'base'}):(x[sortKey]||0)-(y[sortKey]||0);return sortAsc?v:-v});let e=$('#files');if(!a.length){e.innerHTML='<div class="empty">'+(q?t('noResults'):t('empty'))+'</div>';return}e.innerHTML=a.map(x=>{let p=path+(path?'/':'')+x.name,n=JSON.stringify(x.name).replaceAll('"','&quot;'),qp=JSON.stringify(p).replaceAll('"','&quot;');return '<div class="row" draggable="'+writable+'" data-item="'+attr(p)+'"'+(x.dir?' data-folder="'+attr(p)+'"':'')+'><div class="name"><span class="icon">'+(x.dir?'📁':x.archive?'📦':'📄')+'</span><button title="'+esc(x.name)+'" onclick="openItem('+qp+','+Boolean(x.dir||x.archive)+')">'+esc(x.name)+'</button></div><div class="meta">'+human(x.size)+'</div><div class="meta date">'+new Date(x.mtime*1000).toLocaleString(LOCALE)+'</div><div class="actions">'+(!x.dir&&previewPattern.test(x.name)?'<button class="iconbtn" type="button" title="'+t('preview')+'" aria-label="'+t('preview')+'" onclick="preview('+qp+')">'+eyeIcon+'</button>':'')+'<button class="iconbtn" title="'+t('download')+'" onclick="download('+qp+')">↓</button>'+(writable?'<button class="iconbtn" title="'+t('rename')+'" onclick="renameItem('+n+')">✎</button><button class="iconbtn danger" title="'+t('delete')+'" onclick="removeItem('+n+')">×</button>':'')+'</div></div>'}).join('')}
 function markdownInto(source,container,documentPath){
  container.replaceChildren();let lines=source.replace(/\r\n?/g,'\n').split('\n'),code=null,list=null,references=new Map();
  for(let line of lines){let definition=line.match(/^\s{0,3}\[([^\]]+)\]:\s*(?:<([^>]+)>|(\S+))(?:\s+"[^"]*")?\s*$/);if(definition)references.set(definition[1].trim().toLowerCase(),definition[2]||definition[3])}
@@ -109,7 +256,7 @@ function setFileStatus(index,key,complete=false,size=0){let status=$('#upload-st
 function hideUpload(){uploadActive=false;$('#uploadPanel').hidden=true}
 function sendUpload(file,index){return new Promise((resolve,reject)=>{let form=new FormData();form.append('path',path);form.append('files',file,file.name);let x=new XMLHttpRequest();x.open('POST','/api/upload');x.upload.onprogress=e=>{if(e.lengthComputable){updateFileUpload(index,e.loaded/e.total*100,e.loaded,e.total);if(e.loaded>=e.total)setFileStatus(index,'processing')}};x.onload=()=>{let d;try{d=JSON.parse(x.responseText||'{}')}catch{d={error:x.statusText}}if(x.status>=200&&x.status<300)resolve(d);else reject(Error(d.error||x.statusText||t('requestFailed')))};x.onerror=()=>reject(Error(t('requestFailed')));x.onabort=()=>reject(Error(t('requestFailed')));x.send(form)})}
 async function upload(files){if(!writable||!files.length||uploadActive)return;showUpload(files);let done=0,failed=0;for(let i=0;i<files.length;i++){setFileStatus(i,'uploadingFile');try{await sendUpload(files[i],i);setFileStatus(i,'complete',true,files[i].size);done++}catch(e){setFileStatus(i,'failed');failed++}}try{$('#picker').value='';await load()}catch(e){toast(e.message,true)}setTimeout(()=>{hideUpload();toast(t('uploadSummary',done,files.length,failed),failed>0)},3000)}
-let drag=0;addEventListener('dragenter',e=>{e.preventDefault();if(writable){drag++;$('#drop').classList.add('on')}});addEventListener('dragleave',e=>{e.preventDefault();if(--drag<=0){drag=0;$('#drop').classList.remove('on')}});addEventListener('dragover',e=>e.preventDefault());addEventListener('drop',e=>{e.preventDefault();drag=0;$('#drop').classList.remove('on');upload(e.dataTransfer.files)});let initialPath=new URLSearchParams(location.search).get('path')||'';history.replaceState({path:initialPath},'',location.href);addEventListener('popstate',event=>{let state=event.state||{path:new URLSearchParams(location.search).get('path')||''},dialog=$('#previewDialog');if(state.preview){preview(state.preview,false);return}if(dialog.open)dialog.close();if(state.path!==path)load(state.path,false)});load(initialPath,false);
+let initialPath=new URLSearchParams(location.search).get('path')||'';history.replaceState({path:initialPath},'',location.href);addEventListener('popstate',event=>{let state=event.state||{path:new URLSearchParams(location.search).get('path')||''},dialog=$('#previewDialog');if(state.preview){preview(state.preview,false);return}if(dialog.open)dialog.close();if(state.path!==path)load(state.path,false)});load(initialPath,false);
 </script></body></html>'''
 
 
@@ -209,7 +356,87 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
         return target
 
     def send_file(self, target, preview):
-        size = target.stat().st_size
+        with target.open("rb") as source:
+            self.send_stream(source, target.name, target.stat().st_size, preview)
+
+    def send_folder_zip(self, target=None, archive=None, inner=""):
+        members = []
+        if archive is not None:
+            archive.list(inner, self.config["show_hidden"])
+            name = inner.rsplit("/", 1)[-1]
+            prefix = inner + "/"
+            members.append((name + "/", None, 0, archive.entries[inner]["mtime"]))
+            for member_name, entry in archive.entries.items():
+                if not member_name.startswith(prefix): continue
+                relative = member_name[len(prefix):]
+                if not self.config["show_hidden"] and any(part.startswith(".") for part in relative.split("/")): continue
+                zipped_name = name + "/" + relative
+                if entry["dir"]:
+                    members.append((zipped_name + "/", None, 0, entry["mtime"]))
+                else:
+                    # Validate encrypted/unsupported members before starting the response.
+                    with archive.open(member_name): pass
+                    members.append((zipped_name, member_name, entry["size"], entry["mtime"]))
+        else:
+            name = target.name or "files"
+            def walk_error(error): raise error
+            for folder, directories, files in os.walk(target, followlinks=False, onerror=walk_error):
+                folder = Path(folder)
+                directories[:] = sorted(directory for directory in directories if not (folder / directory).is_symlink() and (self.config["show_hidden"] or not directory.startswith(".")))
+                relative = folder.relative_to(target).as_posix()
+                zipped_folder = name + ("/" + relative if relative != "." else "")
+                members.append((zipped_folder + "/", None, 0, folder.stat().st_mtime))
+                for filename in sorted(files):
+                    source = folder / filename
+                    if source.is_symlink() or not source.is_file() or (not self.config["show_hidden"] and filename.startswith(".")): continue
+                    source.resolve().relative_to(target)
+                    info = source.stat()
+                    members.append((zipped_folder + "/" + filename, source, info.st_size, info.st_mtime))
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + urllib.parse.quote(name + ".zip"))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        # Generated ZIPs stream without a temporary file or a known final length.
+        self.send_header("Connection", "close")
+        self.close_connection = True
+        self.end_headers()
+        try:
+            with zipfile.ZipFile(ZipDownloadWriter(self.wfile), "w", compression=zipfile.ZIP_STORED, allowZip64=True) as output:
+                for zipped_name, source_name, size, mtime in members:
+                    try: date_time = datetime.datetime.fromtimestamp(mtime).timetuple()[:6]
+                    except (ValueError, OverflowError, OSError): date_time = (1980, 1, 1, 0, 0, 0)
+                    if date_time[0] < 1980: date_time = (1980, 1, 1, 0, 0, 0)
+                    if date_time[0] > 2107: date_time = (2107, 12, 31, 23, 59, 58)
+                    info = zipfile.ZipInfo(zipped_name, date_time)
+                    info.compress_type = zipfile.ZIP_STORED
+                    info.file_size = size
+                    if source_name is None:
+                        info.external_attr = ((stat.S_IFDIR | 0o755) << 16) | 0x10
+                        output.writestr(info, b"")
+                    else:
+                        info.external_attr = (stat.S_IFREG | 0o644) << 16
+                        source = archive.open(source_name) if archive is not None else source_name.open("rb")
+                        with source, output.open(info, "w", force_zip64=True) as destination:
+                            shutil.copyfileobj(source, destination, length=1024 * 1024)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as error:
+            self.log_message("Folder ZIP download interrupted: %s", error)
+
+    def archive_location(self, relative):
+        relative = urllib.parse.unquote(relative).replace("\\", "/").lstrip("/")
+        parts = relative.split("/")
+        for depth in range(1, len(parts) + 1):
+            target = self.resolve("/".join(parts[:depth]), must_exist=False)
+            if target.is_file() and is_archive(target.name):
+                inner = "/".join(parts[depth:]).rstrip("/")
+                if inner and archive_member_path(inner) is None:
+                    raise PermissionError("Access outside the archive root is not allowed.")
+                return target, archive_member_path(inner) if inner else ""
+        return None
+
+    def send_stream(self, source, name, size, preview):
         range_header = None if self.headers.get("If-Range") else self.headers.get("Range")
         start, end = 0, size - 1
         if range_header:
@@ -234,10 +461,10 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
-        content_type = PREVIEW_TYPES.get(target.suffix.lower()) if preview else mimetypes.guess_type(target.name)[0]
+        content_type = PREVIEW_TYPES.get(Path(name).suffix.lower()) if preview else mimetypes.guess_type(name)[0]
         self.send_response(206 if range_header else 200)
         self.send_header("Content-Type", content_type or "application/octet-stream")
-        self.send_header("Content-Disposition", ("inline" if preview else "attachment") + "; filename*=UTF-8''" + urllib.parse.quote(target.name))
+        self.send_header("Content-Disposition", ("inline" if preview else "attachment") + "; filename*=UTF-8''" + urllib.parse.quote(name))
         self.send_header("Accept-Ranges", "bytes")
         if range_header:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
@@ -246,17 +473,16 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
             self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(end - start + 1 if range_header else size))
         self.end_headers()
-        with target.open("rb") as source:
-            if range_header:
-                source.seek(start)
-                remaining = end - start + 1
-                while remaining:
-                    chunk = source.read(min(1024 * 1024, remaining))
-                    if not chunk: break
-                    self.wfile.write(chunk)
-                    remaining -= len(chunk)
-            else:
-                shutil.copyfileobj(source, self.wfile)
+        if range_header:
+            source.seek(start)
+            remaining = end - start + 1
+            while remaining:
+                chunk = source.read(min(1024 * 1024, remaining))
+                if not chunk: break
+                self.wfile.write(chunk)
+                remaining -= len(chunk)
+        else:
+            shutil.copyfileobj(source, self.wfile)
 
     def do_GET(self):
         parsed = urllib.parse.urlsplit(self.path)
@@ -271,27 +497,54 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
                 self.send_header("X-Frame-Options", "DENY")
                 self.end_headers(); self.wfile.write(raw)
             elif parsed.path == "/api/list":
-                target = self.resolve(query.get("path", [""])[0])
+                relative = query.get("path", [""])[0]
+                location = self.archive_location(relative)
+                if location:
+                    target, inner = location
+                    with ArchiveReader(target) as archive:
+                        items = archive.list(inner, self.config["show_hidden"])
+                    rel = target.relative_to(self.config["root"]).as_posix()
+                    self.send_json({"path": rel + ("/" + inner if inner else ""), "items": items, "writable": False, "archive": rel, "title": self.config["title"]})
+                    return
+                target = self.resolve(relative)
                 if not target.is_dir(): raise ValueError("The requested path is not a folder.")
                 items = []
                 for p in target.iterdir():
                     if not self.config["show_hidden"] and p.name.startswith("."): continue
                     try:
                         st = p.stat(); is_dir = p.is_dir()
-                        items.append({"name": p.name, "dir": is_dir, "size": None if is_dir else st.st_size, "mtime": st.st_mtime})
+                        items.append({"name": p.name, "dir": is_dir, "archive": not is_dir and is_archive(p.name), "size": None if is_dir else st.st_size, "mtime": st.st_mtime})
                     except (OSError, PermissionError): pass
                 rel = target.relative_to(self.config["root"]).as_posix()
                 self.send_json({"path": "" if rel == "." else rel, "items": items, "writable": self.config["upload"], "title": self.config["title"]})
             elif parsed.path in ("/api/download", "/api/preview"):
-                target = self.resolve(query.get("path", [""])[0])
-                if not target.is_file(): raise ValueError("The requested path is not a file.")
+                relative = query.get("path", [""])[0]
                 preview = parsed.path == "/api/preview"
+                location = self.archive_location(relative)
+                if location and location[1]:
+                    target, inner = location
+                    if preview and Path(inner).suffix.lower() not in PREVIEW_TYPES:
+                        raise ValueError("This file cannot be previewed.")
+                    with ArchiveReader(target) as archive:
+                        if not preview and inner in archive.entries and archive.entries[inner]["dir"]:
+                            self.send_folder_zip(archive=archive, inner=inner)
+                            return
+                        with archive.open(inner) as source:
+                            self.send_stream(source, inner.rsplit("/", 1)[-1], archive.entries[inner]["size"], preview)
+                    return
+                target = self.resolve(relative)
+                if target.is_dir() and not preview:
+                    self.send_folder_zip(target=target)
+                    return
+                if not target.is_file(): raise ValueError("The requested path is not a file.")
                 if preview and target.suffix.lower() not in PREVIEW_TYPES:
                     raise ValueError("This file cannot be previewed.")
                 self.send_file(target, preview)
             else: self.fail(404, "Not found.")
         except PermissionError as e: self.fail(403, str(e))
         except FileNotFoundError as e: self.fail(404, str(e))
+        except (zipfile.BadZipFile, tarfile.TarError, EOFError): self.fail(400, "The archive is damaged or its format is not supported.")
+        except (NotImplementedError, RuntimeError): self.fail(400, "The archive compression method is not supported by this Python runtime.")
         except (ValueError, OSError) as e: self.fail(400, str(e))
 
     def read_json(self):
@@ -307,7 +560,10 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
         try:
             self.require_write()
             if parsed.path == "/api/upload": self.handle_upload(); return
-            data = self.read_json(); parent = self.resolve(data.get("path", ""))
+            data = self.read_json()
+            if self.archive_location(data.get("path", "")):
+                raise PermissionError("Archive contents are read-only.")
+            parent = self.resolve(data.get("path", ""))
             if not parent.is_dir(): raise ValueError("The destination folder is invalid.")
             if parsed.path == "/api/mkdir":
                 (parent / safe_name(data.get("name", ""))).mkdir()
@@ -316,6 +572,22 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
                 new = parent / safe_name(data.get("new_name", ""))
                 if new.exists(): raise FileExistsError("An item with the same name already exists.")
                 old.rename(new)
+            elif parsed.path == "/api/move":
+                destination = data.get("destination", "")
+                if self.archive_location(destination):
+                    raise PermissionError("Archive contents are read-only.")
+                destination = self.resolve(destination)
+                if not destination.is_dir():
+                    raise ValueError("The destination folder is invalid.")
+                source = parent / safe_name(data.get("name", ""))
+                if not source.exists() and not source.is_symlink():
+                    raise FileNotFoundError("The file or folder does not exist.")
+                if source.is_dir() and not source.is_symlink() and (destination == source or source in destination.parents):
+                    raise ValueError("A folder cannot be moved into itself or its subfolders.")
+                target = destination / source.name
+                if target.exists() or target.is_symlink():
+                    raise FileExistsError("An item with the same name already exists.")
+                source.rename(target)
             elif parsed.path == "/api/delete":
                 target = parent / safe_name(data.get("name", ""))
                 if target.is_symlink():
@@ -468,6 +740,8 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
         boundary = self.multipart_boundary(self.headers.get("Content-Type", ""))
         fields, files = self.parse_multipart(length, boundary)
         try:
+            if self.archive_location(fields.get("path", "")):
+                raise PermissionError("Archive contents are read-only.")
             parent = self.resolve(fields.get("path", ""))
             if not parent.is_dir(): raise ValueError("The destination folder is invalid.")
             overwrite = self.config["overwrite"]

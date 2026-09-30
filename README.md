@@ -2,12 +2,16 @@
 
 English | [한국어](docs/readme/README.ko.md) | [Español](docs/readme/README.es.md) | [日本語](docs/readme/README.ja.md)
 
+Drag file or folder rows onto a folder in the list or sidebar to move them when writes are enabled. Name clicks keep their existing behavior. Archive contents cannot be moved, and existing items are never overwritten.
+
 A dependency-free, single-file web file browser built entirely with the Python standard library. It provides a responsive, Synology File Station-inspired SPA for browsing and managing files.
 
 ## Features
 
 - Browse folders with browser Back navigation; search or sort by name, size, and modification date
 - Expand, collapse, and navigate folders using the sidebar tree
+- Browse ZIP and TAR archives as read-only folders without extracting them to disk
+- Download folders as streamed ZIP files with no compression (`ZIP_STORED`), including subfolders and empty folders
 - Preview browser-supported images, audio, video, plain text, and Markdown with links and tables; download any file
 - Seek through audio and video with HTTP byte-range support; see a clear message when playback fails
 - Upload multiple files using the file picker or drag and drop
@@ -24,6 +28,16 @@ A dependency-free, single-file web file browser built entirely with the Python s
   - Japanese: `ja-JP` and `ja-*`
   - Korean: `ko-KR` and `ko-*`
   - Unsupported languages fall back to English
+
+## Archive browsing
+
+Click an archive name to browse its folders, or use its Download button to download the original archive. Supported formats are `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz`, `.tbz2`, `.tar.xz`, and `.txz`.
+
+Archive contents support downloads, existing previews, the sidebar tree, and browser history. They are always read-only, including when uploads are enabled. Files inside an archive cannot be uploaded, renamed, deleted, or edited.
+
+Folder Download buttons bundle the selected folder into an uncompressed ZIP, including folders inside an archive. ZIP data streams directly to the browser without creating a temporary ZIP file. Hidden entries follow `show_hidden`, and filesystem symbolic links are skipped.
+
+Encrypted ZIP members cannot be opened. Unsafe member paths and archive links are excluded. Archives inside another archive are downloadable files, not additional virtual folders. Large compressed archives may take longer to browse or seek through; compression support depends on the Python runtime. RAR and 7z are not supported.
 
 ## Requirements
 
