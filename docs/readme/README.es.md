@@ -6,9 +6,9 @@ Un explorador de archivos web en un único archivo, sin dependencias externas y 
 
 ## Funciones
 
-- Exploración de carpetas, búsqueda y ordenación por nombre, tamaño o fecha de modificación
+- Exploración de carpetas con navegación Atrás del navegador, búsqueda y ordenación por nombre, tamaño o fecha de modificación
 - Expandir, contraer y navegar por las carpetas mediante el árbol de la barra lateral
-- Descarga de archivos
+- Vista previa de imágenes compatibles con el navegador, texto sin formato y Markdown con enlaces y tablas; descarga de cualquier archivo
 - Carga múltiple mediante selector de archivos o arrastrar y soltar
 - Progreso individual por archivo con tamaño transferido y estado de finalización
 - Carga en streaming al disco sin almacenar archivos completos en memoria
@@ -122,4 +122,3 @@ El servidor no incluye autenticación de usuarios ni HTTPS. La dirección predet
 ## Detener el servidor
 
 Pulsa `Ctrl+C` en el terminal donde se ejecuta.
-
