@@ -20,7 +20,7 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 
 ARCHIVE_SUFFIXES = (".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tbz", ".tar.xz", ".txz")
 
@@ -245,7 +245,10 @@ async function preview(p,recordHistory=true){let img=$('#previewImage'),textView
 $('#previewDialog').addEventListener('close',()=>{previewRequest++;clearPreviewSources();if(history.state?.preview)history.go(-Math.max(1,history.state.previewDepth||1))});
 $('#previewDialog').addEventListener('click',event=>{let dialog=$('#previewDialog'),rect=dialog.getBoundingClientRect();if(event.target===dialog&&(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom))dialog.close()});
 function openItem(p,d){d?load(p):download(p)}function download(p){location.href='/api/download?path='+encodeURIComponent(p)}
-function promptBox(title,value,cb){$('#dlgTitle').textContent=title;$('#dlgInput').value=value||'';$('#dlgOk').onclick=()=>{let v=$('#dlgInput').value.trim();if(v){dialog.close();cb(v)}};dialog.showModal();setTimeout(()=>{$('#dlgInput').focus();$('#dlgInput').select()},30)}
+$('#dialog').addEventListener('click',event=>{let dialog=$('#dialog'),rect=dialog.getBoundingClientRect();if(event.target===dialog&&(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom))dialog.close()});
+$('#dialog').addEventListener('cancel',event=>{event.preventDefault();$('#dialog').close()});
+$('#dlgInput').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();$('#dlgOk').click()}});
+function promptBox(title,value,cb){let dialog=$('#dialog');$('#dlgTitle').textContent=title;$('#dlgInput').value=value||'';$('#dlgOk').onclick=()=>{let v=$('#dlgInput').value.trim();if(v){dialog.close();cb(v)}};dialog.showModal();setTimeout(()=>{$('#dlgInput').focus();$('#dlgInput').select()},30)}
 function newFolder(){promptBox(t('newFolderName'),'',async n=>{try{await api('/api/mkdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name:n})});toast(t('folderCreated'));load()}catch(e){toast(e.message,true)}})}
 function renameItem(old){promptBox(t('rename'),old,async n=>{try{await api('/api/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name:old,new_name:n})});toast(t('renamed'));load()}catch(e){toast(e.message,true)}})}
 async function removeItem(name){if(!confirm(t('deleteAsk',name)))return;try{await api('/api/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,name})});toast(t('deleted'));load()}catch(e){toast(e.message,true)}}
