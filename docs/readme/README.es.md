@@ -11,6 +11,7 @@ Un explorador de archivos web en un único archivo, sin dependencias externas y 
 - Descarga de archivos
 - Carga múltiple mediante selector de archivos o arrastrar y soltar
 - Progreso individual por archivo con tamaño transferido y estado de finalización
+- Carga en streaming al disco sin almacenar archivos completos en memoria
 - Creación de carpetas, cambio de nombre y eliminación recursiva
 - Modo de solo lectura de forma predeterminada
 - Opciones de línea de comandos y configuración JSON

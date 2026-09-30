@@ -4,22 +4,18 @@
 from __future__ import annotations
 
 import argparse
-import html
 import json
 import mimetypes
 import os
+import re
 import shutil
 import sys
 import tempfile
 import urllib.parse
-from datetime import datetime
-from email.parser import BytesParser
-from email.policy import default as email_policy
-from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-VERSION = "1.1.1"
+VERSION = "1.3.1"
 
 INDEX_HTML = r'''<!doctype html>
 <html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -74,6 +70,60 @@ def safe_name(name: str) -> str:
     if not name or name in {".", ".."} or "/" in name or "\\" in name or "\0" in name:
         raise ValueError("Invalid file name.")
     return name
+
+
+class LimitedInput:
+    """Read at most Content-Length bytes while supporting a pushback buffer."""
+
+    def __init__(self, stream, length: int):
+        self.stream = stream
+        self.remaining = length
+        self.buffer = b""
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self.buffer) + self.remaining
+        output = self.buffer[:size]
+        self.buffer = self.buffer[len(output):]
+        needed = size - len(output)
+        if needed > 0 and self.remaining > 0:
+            chunk = self.stream.read(min(needed, self.remaining))
+            self.remaining -= len(chunk)
+            output += chunk
+        return output
+
+    def unread(self, data: bytes):
+        self.buffer = data + self.buffer
+
+    def readline(self, limit: int) -> bytes:
+        output = bytearray()
+        while len(output) < limit:
+            char = self.read(1)
+            if not char:
+                return bytes(output)
+            output += char
+            if char == b"\n":
+                return bytes(output)
+        raise ValueError("A multipart header line is too large.")
+
+
+def disposition_parameters(value: str):
+    params = {}
+    pattern = r";\s*([!#$%&'*+\-.^_`|~0-9A-Za-z]+)\s*=\s*(?:\"((?:\\.|[^\"])*)\"|([^;]*))"
+    for match in re.finditer(pattern, value):
+        key = match.group(1).lower()
+        if match.group(2) is not None:
+            params[key] = re.sub(r"\\(.)", r"\1", match.group(2))
+        else:
+            params[key] = match.group(3).strip()
+    if "filename" not in params and "filename*" in params:
+        encoded = params["filename*"]
+        try:
+            charset, _language, encoded_name = encoded.split("'", 2)
+            params["filename"] = urllib.parse.unquote(encoded_name, encoding=charset or "utf-8", errors="strict")
+        except (LookupError, UnicodeError, ValueError):
+            raise ValueError("Invalid encoded upload file name.")
+    return params
 
 
 class FileBrowserHandler(BaseHTTPRequestHandler):
@@ -187,39 +237,160 @@ class FileBrowserHandler(BaseHTTPRequestHandler):
         except FileExistsError as e: self.fail(409, str(e))
         except (ValueError, OSError, json.JSONDecodeError) as e: self.fail(400, str(e))
 
+    def multipart_boundary(self, content_type: str) -> bytes:
+        if content_type.split(";", 1)[0].strip().lower() != "multipart/form-data":
+            raise ValueError("A multipart/form-data request is required.")
+        match = re.search(r'(?:^|;)\s*boundary=(?:"([^"]+)"|([^;]+))', content_type, re.IGNORECASE)
+        if not match:
+            raise ValueError("The multipart boundary is missing.")
+        value = (match.group(1) or match.group(2)).strip()
+        try:
+            boundary = value.encode("ascii")
+        except UnicodeEncodeError:
+            raise ValueError("The multipart boundary must be ASCII.")
+        if not boundary or len(boundary) > 200 or b"\r" in boundary or b"\n" in boundary:
+            raise ValueError("The multipart boundary is invalid.")
+        return boundary
+
+    def multipart_headers(self, reader: LimitedInput):
+        headers, total = {}, 0
+        while True:
+            line = reader.readline(8192)
+            if not line: raise ValueError("The upload was interrupted while reading multipart headers.")
+            total += len(line)
+            if total > 65536: raise ValueError("Multipart headers are too large.")
+            if line == b"\r\n": return headers
+            if not line.endswith(b"\r\n") or b":" not in line:
+                raise ValueError("A multipart header is malformed.")
+            raw_name, raw_value = line[:-2].split(b":", 1)
+            try:
+                name = raw_name.decode("ascii").strip().lower()
+                value = raw_value.strip().decode("utf-8")
+            except UnicodeDecodeError:
+                try:
+                    name = raw_name.decode("ascii").strip().lower()
+                    value = raw_value.strip().decode("latin-1")
+                except UnicodeDecodeError:
+                    raise ValueError("A multipart header has an invalid encoding.")
+            headers[name] = value
+
+    def stream_multipart_part(self, reader: LimitedInput, boundary: bytes, output):
+        marker = b"\r\n--" + boundary
+        buffer = b""
+        while True:
+            chunk = reader.read(1024 * 1024)
+            if not chunk:
+                raise ValueError("The upload was interrupted before the multipart boundary.")
+            buffer += chunk
+            search_from = 0
+            while True:
+                index = buffer.find(marker, search_from)
+                if index < 0:
+                    keep = len(marker) + 2
+                    if len(buffer) > keep:
+                        output.write(buffer[:-keep])
+                        buffer = buffer[-keep:]
+                    break
+                suffix_at = index + len(marker)
+                if len(buffer) < suffix_at + 2:
+                    if index:
+                        output.write(buffer[:index])
+                        buffer = buffer[index:]
+                    break
+                suffix = buffer[suffix_at:suffix_at + 2]
+                if suffix in (b"\r\n", b"--"):
+                    output.write(buffer[:index])
+                    reader.unread(buffer[suffix_at + 2:])
+                    return suffix == b"--"
+                search_from = index + 1
+
+    def parse_multipart(self, length: int, boundary: bytes):
+        reader = LimitedInput(self.rfile, length)
+        opening = reader.readline(len(boundary) + 6)
+        if opening != b"--" + boundary + b"\r\n":
+            raise ValueError("The multipart request has an invalid opening boundary.")
+        fields, files = {}, []
+        try:
+            final = False
+            while not final:
+                headers = self.multipart_headers(reader)
+                disposition = headers.get("content-disposition", "")
+                if disposition.split(";", 1)[0].strip().lower() != "form-data":
+                    raise ValueError("A multipart part is missing form-data disposition.")
+                params = disposition_parameters(disposition)
+                field_name = params.get("name")
+                filename = params.get("filename")
+                if filename is not None:
+                    if len(files) >= 1000: raise ValueError("Too many files in one upload request.")
+                    filename = safe_name(filename.replace("\\", "/").rsplit("/", 1)[-1])
+                    temporary = tempfile.NamedTemporaryFile(prefix="simple-http-file-browser-", delete=False)
+                    temporary_path = Path(temporary.name)
+                    files.append((filename, temporary_path))
+                    try:
+                        final = self.stream_multipart_part(reader, boundary, temporary)
+                    finally:
+                        temporary.close()
+                else:
+                    with tempfile.SpooledTemporaryFile(max_size=65536) as field:
+                        final = self.stream_multipart_part(reader, boundary, field)
+                        if field.tell() > 1024 * 1024: raise ValueError("A multipart form field is too large.")
+                        field.seek(0)
+                        if field_name:
+                            fields[field_name] = field.read().decode("utf-8")
+                if final:
+                    trailer = reader.read(2)
+                    if trailer not in (b"", b"\r\n"):
+                        raise ValueError("The multipart closing boundary is malformed.")
+                    while reader.read(1024 * 1024): pass
+            return fields, files
+        except Exception:
+            for _name, temporary_path in files:
+                temporary_path.unlink(missing_ok=True)
+            raise
+
+    def store_uploaded_file(self, source: Path, target: Path, overwrite: bool):
+        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".upload", dir=target.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "wb") as output, source.open("rb") as uploaded:
+                shutil.copyfileobj(uploaded, output, length=1024 * 1024)
+            if overwrite:
+                os.replace(temporary, target)
+            else:
+                try:
+                    os.link(temporary, target)
+                except FileExistsError:
+                    raise FileExistsError(f"{target.name}: an item with the same name already exists.")
+                temporary.unlink()
+        finally:
+            temporary.unlink(missing_ok=True)
+
     def handle_upload(self):
         length = int(self.headers.get("Content-Length", "0"))
         max_bytes = self.config["max_upload_mb"] * 1024 * 1024
         if length <= 0 or length > max_bytes: raise ValueError(f"Uploads are limited to {self.config['max_upload_mb']} MB per request.")
-        ctype = self.headers.get("Content-Type", "")
-        if not ctype.startswith("multipart/form-data") or "boundary=" not in ctype: raise ValueError("A multipart/form-data request is required.")
-        with tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024) as body:
-            remaining = length
-            while remaining:
-                chunk = self.rfile.read(min(1024 * 1024, remaining))
-                if not chunk: raise ValueError("The upload was interrupted.")
-                body.write(chunk); remaining -= len(chunk)
-            body.seek(0)
-            msg = BytesParser(policy=email_policy).parsebytes(("Content-Type: " + ctype + "\r\nMIME-Version: 1.0\r\n\r\n").encode() + body.read())
-        fields, files = {}, []
-        for part in msg.iter_parts():
-            name = part.get_param("name", header="content-disposition")
-            filename = part.get_filename()
-            if filename is not None: files.append((safe_name(Path(filename).name), part.get_payload(decode=True) or b""))
-            elif name: fields[name] = (part.get_payload(decode=True) or b"").decode("utf-8")
-        parent = self.resolve(fields.get("path", ""))
-        if not parent.is_dir(): raise ValueError("The destination folder is invalid.")
-        overwrite = self.config["overwrite"]
-        targets = []
-        for name, _ in files:
-            relative = (parent.relative_to(self.config["root"]) / name).as_posix()
-            target = self.resolve(relative, must_exist=False)
-            if target.exists() and (target.is_dir() or not overwrite):
-                raise FileExistsError(f"{name}: an item with the same name already exists.")
-            targets.append(target)
-        for (name, payload), target in zip(files, targets):
-            with target.open("wb") as out: out.write(payload)
-        self.send_json({"ok": True, "count": len(files)})
+        boundary = self.multipart_boundary(self.headers.get("Content-Type", ""))
+        fields, files = self.parse_multipart(length, boundary)
+        try:
+            parent = self.resolve(fields.get("path", ""))
+            if not parent.is_dir(): raise ValueError("The destination folder is invalid.")
+            overwrite = self.config["overwrite"]
+            targets, seen = [], set()
+            for name, _source in files:
+                relative = (parent.relative_to(self.config["root"]) / name).as_posix()
+                target = self.resolve(relative, must_exist=False)
+                if target in seen and not overwrite:
+                    raise FileExistsError(f"{name}: an item with the same name already exists.")
+                seen.add(target)
+                if target.exists() and (target.is_dir() or not overwrite):
+                    raise FileExistsError(f"{name}: an item with the same name already exists.")
+                targets.append(target)
+            for (_name, source), target in zip(files, targets):
+                self.store_uploaded_file(source, target, overwrite)
+            self.send_json({"ok": True, "count": len(files)})
+        finally:
+            for _name, source in files:
+                source.unlink(missing_ok=True)
 
 
 def load_config(path: Path):

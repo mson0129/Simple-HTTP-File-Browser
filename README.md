@@ -11,6 +11,7 @@ A dependency-free, single-file web file browser built entirely with the Python s
 - Download files
 - Upload multiple files using the file picker or drag and drop
 - Track each file with its own progress bar, transferred size, and completion status
+- Stream upload data to disk without buffering entire files in memory
 - Create folders, rename items, and recursively delete files and folders
 - Read-only mode by default
 - CLI options and JSON configuration
